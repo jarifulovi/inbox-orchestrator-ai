@@ -1,3 +1,5 @@
 fastapi
 transformers
 torch
+supabase
+python-dotenv

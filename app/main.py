@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from app.db.supabase import is_supabase_connected
 
 app = FastAPI()
 
@@ -10,4 +11,5 @@ async def root():
 
 @app.get("/health")
 async def get_health():
-    return {"message": "OK"}
+    ok = is_supabase_connected()
+    return {"supabase": "OK" if ok else "FAILED"}
