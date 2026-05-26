@@ -1,0 +1,122 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Installer logs
+distutils.log
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# mypy
+.mypy_cache/
+.dmypy.json
+.dmypy-working/
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# VS Code
+.vscode/
+
+# JetBrains IDEs
+.idea/
+
+# Local env
+.env
+.venv
+env/
+venv/
+ENV/
+
+# FastAPI specific
+instance/
+
+# NLP artifacts files (e.g., HuggingFace Transformers, DistilBERT)
+**/artifacts/
+*.bin
+*.h5
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# HuggingFace Transformers cache
+transformers_cache/
+
+# DVC
+.dvc/
+*.dvc
+
+# Data files
+*.csv
+*.tsv
+*.log
+*.jsonl
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Other
+*.sqlite3
+*.db
+
+# Ignore test outputs
+*.out
+*.test
+
+# Ignore HTTP test files
+*.http
