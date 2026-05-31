@@ -5,7 +5,9 @@ from transformers import (
     AutoModelForSequenceClassification,
     PreTrainedTokenizer
 )
-from typing import Dict, Any, Optional, List
+from typing import Dict, Optional, List
+
+from app.schemas.email_classification import EmailClassificationPrediction
 
 ARTIFACTS = [
     ("best_model_fold_1_best", 1),
@@ -55,7 +57,7 @@ class EnsembleEmailClassifier:
             self.models.append(model)
             self.weights.append(weight)
 
-    def predict(self, email_texts: List[str]) -> List[Dict[str, Any]]:
+    def predict(self, email_texts: List[str]) -> List[EmailClassificationPrediction]:
         if self.tokenizer is None:
             raise RuntimeError("Tokenizer is not loaded.")
         if not email_texts:
@@ -79,13 +81,19 @@ class EnsembleEmailClassifier:
         final_preds = torch.argmax(weighted_probs, dim=1).tolist()
         confidences = torch.max(weighted_probs, dim=1).values.tolist()
         probabilities = weighted_probs.tolist()
-        results: List[Dict[str, Any]] = []
+        results: List[EmailClassificationPrediction] = []
         for pred, conf, probs in zip(final_preds, confidences, probabilities):
             label_id = int(pred)
-            results.append({
-                "label_id": label_id,
-                "label": self.labels.get(label_id, str(label_id)),
-                "confidence": round(float(conf), 4),
-                "probabilities": probs
-            })
+            probability_map = {
+                self.labels.get(i, str(i)): float(prob)
+                for i, prob in enumerate(probs)
+            }
+            results.append(
+                EmailClassificationPrediction(
+                    label_id=label_id,
+                    label=self.labels.get(label_id, str(label_id)),
+                    confidence=round(float(conf), 4),
+                    probabilities=probability_map
+                )
+            )
         return results

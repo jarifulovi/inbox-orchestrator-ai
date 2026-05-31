@@ -1,10 +1,18 @@
 try:
     from .ensemble_loader import EnsembleEmailClassifier
     from .preprocessor import EmailPreprocessor
+    from ...schemas.email_classification import (
+        EmailClassificationBatchRequest,
+        EmailClassificationPrediction
+    )
 except ImportError:
     # Fallback for CLI usage
     from app.models.classifier.ensemble_loader import EnsembleEmailClassifier
     from app.models.classifier.preprocessor import EmailPreprocessor
+    from app.schemas.email_classification import (
+        EmailClassificationBatchRequest,
+        EmailClassificationPrediction
+    )
 
 
 class EmailClassifier:
@@ -12,16 +20,22 @@ class EmailClassifier:
         self.ensemble = EnsembleEmailClassifier()
         self.preprocess = EmailPreprocessor()
 
-    def predict(self, email_texts: list[str]):
+    def predict(self, email_texts: list[str]) -> list[EmailClassificationPrediction]:
         """
         Predict classes for a batch of emails using the ensemble classifier.
         Args:
             email_texts (list[str]): List of email contents.
         Returns:
-            list[dict]: Batch predictions with labels, confidences, and probabilities.
+            list[EmailClassificationPrediction]: Batch predictions with labels, confidences, and probabilities.
         """
         processed_texts = self.preprocess.batch_preprocess(email_texts)
         return self.ensemble.predict(processed_texts)
+
+    def predict_request(
+        self,
+        request: EmailClassificationBatchRequest
+    ) -> list[EmailClassificationPrediction]:
+        return self.predict(request.email_texts)
 
 
 if __name__ == "__main__":

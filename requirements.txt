@@ -3,3 +3,4 @@ transformers
 torch
 supabase
 python-dotenv
+pydantic
