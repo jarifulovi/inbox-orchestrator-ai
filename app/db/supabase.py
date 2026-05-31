@@ -46,7 +46,7 @@ def is_supabase_connected() -> bool:
         client.from_("_analytics").select("*").limit(1).execute()
         return True
     except Exception:
-        # If _analytics is restricted under your current token setup,
+        # If _analytics is restricted under the current token setup,
         # fallback to checking a basic authentication parameter lookup over the web.
         try:
             client.auth.get_session()
