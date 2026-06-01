@@ -4,3 +4,5 @@ torch
 supabase
 python-dotenv
 pydantic
+spacy
+dateparser
