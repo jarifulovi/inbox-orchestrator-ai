@@ -62,6 +62,7 @@ class TextPreprocessor:
         (r"\bas soon as possible\b", "as soon as possible"),
         (r"\basap\b", "as soon as possible"),
         (r"\bsometime today\b", "today"),
+        (r"\bremember to\b", "please")
     )
 
     _FALLBACK_CONTRACTIONS = (
@@ -162,7 +163,19 @@ class TextPreprocessor:
 
 
 class ActionPostprocessor:
-    # Remove actions that are too casual or low-value to be treated as real corporate tasks.
+    HARD_DELETE_VERBS = {
+        # Original structural/helper verbs
+        "let", "shall",
+        # Cognitive/Epistemic frames (Mental actions, not operational tasks)
+        "think", "hope", "believe", "guess", "assume", "suppose", "wonder", "feel",
+        # Conversational / Discourse markers (Polite background text)
+        "mean", "say", "tell", "mention", "hear", "apologize", "thank", "appreciate",
+        # Stative / Aspective descriptors (States of being or status)
+        "seem", "look", "appear", "stay", "remain", "happen", "exist",
+        # Permissive / Volitional shells
+        "allow", "permit", "wish", "intend"
+    }
+    # Verbs that are casual and not necessarily high-value tasks
     CASUAL_VERBS = {
         "read",
         "leave",
@@ -171,6 +184,12 @@ class ActionPostprocessor:
         "eat",
         "go",
         "view",
+        "let",
+        "shall"
+    }
+    HIGH_VALUE_OBJECT_CUES = {
+        "contract", "proposal", "report", "article", "presentation", "doc", "file", "email", "ticket",
+        "pr", "code", "policy", "spec", "deck", "presentation", "invoice", "guideline"
     }
 
     @staticmethod
@@ -182,8 +201,45 @@ class ActionPostprocessor:
 
     @classmethod
     def _is_casual_action(cls, action: "ExtractedActionPrediction") -> bool:
-        verb = cls._normalize_signature_value(getattr(action, "verb_primitive", ""))
-        return bool(verb) and verb in cls.CASUAL_VERBS
+        """Evaluates whether an action is noise or conversational email pleasantry."""
+        if not action:
+            return False
+
+        # Read the already-normalized, lowercase verb string directly
+        verb = action.verb_primitive
+        if not verb:
+            return False
+
+        # Gate 1: Check contextual casual boundaries
+        if verb in cls.CASUAL_VERBS:
+            # Gate 1a: Immediate hard delete overrides
+            if verb in cls.HARD_DELETE_VERBS:
+                return True
+
+            # Gate 1b: Save task if high-value corporate cues exist in object string
+            obj = action.object_primitive
+            if obj:
+                # No need for str().lower() here, obj is already normalized up front!
+                if any(cue in obj for cue in cls.HIGH_VALUE_OBJECT_CUES):
+                    return False
+
+            return True
+
+        return False
+
+
+
+    @staticmethod
+    def _sanitize_object_clause(obj_value: str) -> str:
+        """Removes trailing dependent clauses and temporal noise from the core noun."""
+        if not obj_value:
+            return ""
+
+        obj_str = str(obj_value).strip()
+        clean_pattern = r"\s+(?:before|after|until|so\s+that|in\s+order\s+to)\b"
+
+        split_parts = re.split(clean_pattern, obj_str, flags=re.IGNORECASE)
+        return split_parts[0].strip() if split_parts else obj_str
 
     @staticmethod
     def _deduplicate_actions(actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:
@@ -192,9 +248,9 @@ class ActionPostprocessor:
 
         for action in actions:
             task_signature = (
-                ActionPostprocessor._normalize_signature_value(getattr(action, "verb_primitive", "")),
-                ActionPostprocessor._normalize_signature_value(getattr(action, "object_primitive", "")),
-                ActionPostprocessor._normalize_signature_value(getattr(action, "source_sentence", "")),
+                getattr(action, "verb_primitive", ""),
+                getattr(action, "object_primitive", ""),
+                getattr(action, "source_sentence", ""),
             )
             if task_signature not in seen_tasks:
                 seen_tasks.add(task_signature)
@@ -203,45 +259,34 @@ class ActionPostprocessor:
         return deduplicated
 
     @classmethod
-    def clean(cls, actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:
-        """Stage 1: Normalize structures and filter out low-value semantic actions safely."""
+    def clean_and_sanitize(cls, actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:
+        """Filters out conversational low-value actions and trims trailing grammatical text."""
         if not actions:
             return []
 
-        cleaned_actions: List["ExtractedActionPrediction"] = []
+        processed_actions: List["ExtractedActionPrediction"] = []
 
         for action in actions:
-            # 1. Drop casual actions completely
+            # 1. NORMALIZE ONCE: Clean up everything right at the entryway
+            action.verb_primitive = cls._normalize_signature_value(getattr(action, "verb_primitive", ""))
+            action.object_primitive = cls._normalize_signature_value(getattr(action, "object_primitive", ""))
+            action.source_sentence = cls._normalize_signature_value(getattr(action, "source_sentence", ""))
+
+            # 1. Filter out casual text noise
             if cls._is_casual_action(action):
                 continue
 
-            # 2. Safe, Non-Destructive Object Sanitization
+            # 2. Extract and sanitize core noun targets
             if action.object_primitive:
-                # Convert to string safely and strip whitespace
-                obj_str = str(action.object_primitive).strip()
+                action.object_primitive = cls._sanitize_object_clause(action.object_primitive)
 
-                # Suffix Safeguard: Using a pre-compiled raw regex string prevents
-                # invalid escape sequence warnings completely.
-                # This safely slices off clause trailing phrases.
-                clean_pattern = r"\s+(?:before|after|until|so\s+that|in\s+order\s+to)\b"
+            processed_actions.append(action)
 
-                # Perform the split cleanly
-                split_parts = re.split(clean_pattern, obj_str, flags=re.IGNORECASE)
+        return processed_actions
 
-                # Re-assign back the isolated core entity
-                action.object_primitive = split_parts[0].strip() if split_parts else obj_str
-
-            cleaned_actions.append(action)
-
-        return cleaned_actions
-
-    @staticmethod
-    def deduplicate(actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:
-        """Filters out structurally identical actions to save DB space."""
-        return ActionPostprocessor._deduplicate_actions(actions)
 
     @classmethod
     def process(cls, actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:
         """End-to-end postprocessing pipeline."""
-        cleaned_actions = cls.clean(actions)
+        cleaned_actions = cls.clean_and_sanitize(actions)
         return cls._deduplicate_actions(cleaned_actions)

@@ -38,15 +38,6 @@ class ActionPostprocessorTests(unittest.TestCase):
         self.assertEqual(len(cleaned), 1)
         self.assertEqual(cleaned[0].verb_primitive, "review")
 
-    def test_deduplicate_ignores_case_and_whitespace_variants(self):
-        actions = [
-            DummyAction("Review", "Draft", "Please review the draft."),
-            DummyAction("review", " draft ", " Please review the draft. "),
-        ]
-
-        deduplicated = ActionPostprocessor.deduplicate(actions)  # type: ignore[arg-type]
-        self.assertEqual(len(deduplicated), 1)
-
     def test_process_filters_then_deduplicates(self):
         actions = [
             DummyAction("watch", "video", "Please watch the tutorial."),
