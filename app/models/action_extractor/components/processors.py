@@ -161,10 +161,8 @@ class TextPreprocessor:
         return cleaned
 
 
-
-
 class ActionPostprocessor:
-    # Remove actions that are too casual or low-value to be treated as real tasks.
+    # Remove actions that are too casual or low-value to be treated as real corporate tasks.
     CASUAL_VERBS = {
         "read",
         "leave",
@@ -183,12 +181,12 @@ class ActionPostprocessor:
         return value
 
     @classmethod
-    def _is_casual_action(cls, action: ExtractedActionPrediction) -> bool:
+    def _is_casual_action(cls, action: "ExtractedActionPrediction") -> bool:
         verb = cls._normalize_signature_value(getattr(action, "verb_primitive", ""))
         return bool(verb) and verb in cls.CASUAL_VERBS
 
     @staticmethod
-    def _deduplicate_actions(actions: List[ExtractedActionPrediction]) -> List[ExtractedActionPrediction]:
+    def _deduplicate_actions(actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:
         seen_tasks = set()
         deduplicated = []
 
@@ -205,54 +203,45 @@ class ActionPostprocessor:
         return deduplicated
 
     @classmethod
-    def clean(cls, actions: List[ExtractedActionPrediction]) -> List[ExtractedActionPrediction]:
-        """Stage 1: normalize and filter out low-value actions."""
+    def clean(cls, actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:
+        """Stage 1: Normalize structures and filter out low-value semantic actions safely."""
         if not actions:
             return []
 
-        cleaned_actions: List[ExtractedActionPrediction] = []
+        cleaned_actions: List["ExtractedActionPrediction"] = []
 
         for action in actions:
-            # Skip casual/low-value verbs first
+            # 1. Drop casual actions completely
             if cls._is_casual_action(action):
                 continue
 
-            # Normalize object to a single token where possible. If the parser
-            # accidentally combined multi-word objects (e.g. "budget approval" ->
-            # "budget approval"), prefer the clean single component. However,
-            # if the first token is already present as another action's object,
-            # skip this noisy duplicate to avoid creating misleading entries.
-            obj = action.object_primitive or ""
-            obj = obj.strip()
-            if obj and " " in obj:
-                words = obj.split()
-                if len(words) > 1:
-                    # Collect other actions' object primitives to compare against
-                    other_objs = [
-                        (a.object_primitive or "").strip()
-                        for a in actions
-                        if a is not action
-                    ]
-                    first_word = words[0]
-                    if first_word in other_objs:
-                        # Noisy combined object where the clearer single-token form
-                        # already exists elsewhere — skip this action.
-                        continue
-                    # Otherwise, set the object to the first token to keep it
-                    # a single-word primitive.
-                    action.object_primitive = first_word
+            # 2. Safe, Non-Destructive Object Sanitization
+            if action.object_primitive:
+                # Convert to string safely and strip whitespace
+                obj_str = str(action.object_primitive).strip()
+
+                # Suffix Safeguard: Using a pre-compiled raw regex string prevents
+                # invalid escape sequence warnings completely.
+                # This safely slices off clause trailing phrases.
+                clean_pattern = r"\s+(?:before|after|until|so\s+that|in\s+order\s+to)\b"
+
+                # Perform the split cleanly
+                split_parts = re.split(clean_pattern, obj_str, flags=re.IGNORECASE)
+
+                # Re-assign back the isolated core entity
+                action.object_primitive = split_parts[0].strip() if split_parts else obj_str
 
             cleaned_actions.append(action)
 
         return cleaned_actions
 
     @staticmethod
-    def deduplicate(actions: List[ExtractedActionPrediction]) -> List[ExtractedActionPrediction]:
+    def deduplicate(actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:
         """Filters out structurally identical actions to save DB space."""
         return ActionPostprocessor._deduplicate_actions(actions)
 
     @classmethod
-    def process(cls, actions: List[ExtractedActionPrediction]) -> List[ExtractedActionPrediction]:
-        """End-to-end postprocessing: clean first, then deduplicate."""
+    def process(cls, actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:
+        """End-to-end postprocessing pipeline."""
         cleaned_actions = cls.clean(actions)
         return cls._deduplicate_actions(cleaned_actions)
