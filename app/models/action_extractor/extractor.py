@@ -31,7 +31,7 @@ class ActionExtractor:
         for doc, email_id in self.nlp.pipe(cleaned_pairs, as_tuples=True, batch_size=batch_size):
             raw_actions = doc._.extracted_actions
             enriched_actions = DeadlineNormalizer.normalize_action_deadlines(raw_actions)
-            final_actions = ActionPostprocessor.deduplicate(enriched_actions)
+            final_actions = ActionPostprocessor.process(enriched_actions)
 
             batch_response = ExtractedActionBatchResponse(
                 email_id=email_id,

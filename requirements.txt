@@ -6,3 +6,4 @@ python-dotenv
 pydantic
 spacy
 dateparser
+contractions==0.1.73
