@@ -34,9 +34,14 @@ class OwnershipDetector:
         return self._evaluate_routing_matrix(governing_verb, clause_roles)
 
     def _resolve_governing_root(self, verb: Token) -> Token:
-        """Iteratively traces conjunction chains to find the true structural root."""
+        """Iteratively traces conjunction chains to find the true structural root.
+        Stops early when the current verb has its own explicit subject — that means
+        it controls its own clause (e.g. a purpose clause like 'so X can process it')
+        and should not borrow ownership context from the head verb."""
         curr = verb
         while curr.dep_ == "conj" and curr.head.pos_ == "VERB" and curr != curr.head:
+            if any(c.dep_ in {"nsubj", "nsubjpass"} for c in curr.children):
+                break
             curr = curr.head
         return curr
 

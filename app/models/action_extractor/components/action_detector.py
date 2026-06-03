@@ -63,6 +63,10 @@ class ActionDetector:
 
         # Handle coordinate family structures
         if verb.dep_ == "conj":
+            # If this verb has its own explicit subject it governs its own clause
+            # (e.g., "so accounting can process it") — don't inherit from parent
+            if any(c.dep_ in {"nsubj", "nsubjpass"} for c in verb.children):
+                return False
             curr_head = verb.head
             while curr_head.dep_ == "conj" and curr_head.head.pos_ == "VERB" and curr_head != curr_head.head:
                 curr_head = curr_head.head

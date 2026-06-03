@@ -219,6 +219,7 @@ class ActionParser:
 
                     if has_objects:
                         token.pos_ = "VERB"  # Dynamic type mutation override
+                        token.tag_ = "VB"    # Sync tag so actionability tag-check passes
 
                         # Prevent duplicate insertions if it's somehow already tracked
                         if token not in current_verbs:
