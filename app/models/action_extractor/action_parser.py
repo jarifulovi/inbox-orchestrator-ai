@@ -1,7 +1,6 @@
-from datetime import datetime
-from typing import List, Any
-import spacy
+from typing import List
 
+from spacy.tokens import Token
 from app.schemas.extracted_actions import ExtractedActionPrediction
 from app.models.action_extractor.components.action_detector import ActionDetector
 from app.models.action_extractor.components.ownership_detector import OwnershipDetector
@@ -20,25 +19,25 @@ class ActionParser:
     def parse_action_phrases(cls, doc) -> List[ExtractedActionPrediction]:
         extracted_actions: List[ExtractedActionPrediction] = []
 
-        detector = ActionDetector()
-        ownership = OwnershipDetector()
+        action_detector = ActionDetector()
+        ownership_detector = OwnershipDetector()
 
         for sent in doc.sents:
             deadline = None
             raw_entities_list = [{"text": ent.text, "label": ent.label_} for ent in sent.ents]
+            # Mis-classification resolver stage
             verbs = cls._heal_misclassified_serial_verbs(sent)
+            verbs = cls._heal_misclassified_imperatives(sent, verbs)
+            # ======================================================
 
             for verb in verbs:
                 # Filter out verbal adjectives (e.g., "completed projects")
                 if verb.dep_ in {"amod", "nmod"}:
                     continue
-
-                if not detector.is_actionable_verb(verb, sent):
+                if not action_detector.is_actionable_verb(verb, sent):
                     continue
-
-                if not ownership.is_verb_assigned_to_me(verb):
+                if not ownership_detector.is_verb_assigned_to_me(verb):
                     continue
-
                 if cls._is_trapped_in_purpose_clause(sent, verb, verbs):
                     continue
 
@@ -176,15 +175,12 @@ class ActionParser:
             t_text = token.text.lower()
             if t_text in cls.PURPOSE_ANCHORS:
                 return True
-            # Explicitly intercept multi-token phrase "so that" matching inside window boundaries
-            if t_text == "so" and i + 1 < len(window_tokens) and window_tokens[i + 1].text.lower() == "that":
-                return True
 
         return False
 
 
     @classmethod
-    def _heal_misclassified_serial_verbs(cls, sent) -> List[spacy.tokens.Token]:
+    def _heal_misclassified_serial_verbs(cls, sent) -> List[Token]:
         """
         Heals serial action elements (e.g., 'test' in 'update, test, and deploy')
         that spaCy occasionally misclassifies as NOUNs due to comma punctuation.
@@ -200,3 +196,32 @@ class ActionParser:
                     token.pos_ = "VERB"  # Safe in-memory override for this parsing run
                     verbs.append(token)
         return verbs
+
+    @classmethod
+    def _heal_misclassified_imperatives(cls, sent, current_verbs: List[Token]) -> List[Token]:
+        """
+        Stage 1b: Explicitly scans for sentence-starting imperative actions
+        misclassified as ADVs, modifying them to VERBs inline.
+        """
+        # Dynamic lookup from Ownership registry to prevent string hardcoding
+        od = OwnershipDetector()
+        IMPERATIVE_ACTIONS = od.ASSET_ROUTING_VERBS | od.DELEGATION_VERBS
+
+        for token in sent:
+            # We only target misclassified Adverbs acting as the sentence ROOT
+            if token.pos_ == "ADV" and token.dep_ == "ROOT":
+                token_text = token.text.lower()
+                token_lemma = token.lemma_.lower()
+
+                # Verify it matches our action types and has child objects/prepositions
+                if token_text in IMPERATIVE_ACTIONS or token_lemma in IMPERATIVE_ACTIONS:
+                    has_objects = any(c.dep_ in cls.TARGET_DEPS or c.dep_ == "prep" for c in token.children)
+
+                    if has_objects:
+                        token.pos_ = "VERB"  # Dynamic type mutation override
+
+                        # Prevent duplicate insertions if it's somehow already tracked
+                        if token not in current_verbs:
+                            current_verbs.append(token)
+
+        return current_verbs
