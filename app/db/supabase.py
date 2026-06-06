@@ -6,20 +6,19 @@ from supabase import create_client, Client
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-# NOTE: For the backend processing tasks (saving tasks, writing ML outputs),
-# use the private 'service_role' key here instead of the public 'anon' key
-# so the script can bypass Row Level Security (RLS) constraints.
 SUPABASE_KEY = os.getenv("SUPABASE_SECRET_KEY")
 
 # Internal global reference used to maintain a strict Singleton pattern
 _client: Client | None = None
 
 
-def get_supabase_client() -> Client | None:
+def get_supabase_client() -> Client:
     """
     Thread-safe Singleton provider for the Supabase Client connection.
     Initializes the network client on the first execution and subsequently
     distributes the active instance across the application lifecycle.
+
+    Guarantees a 'Client' return or raises a RuntimeError.
     """
     global _client
     if _client is None:
@@ -37,19 +36,20 @@ def is_supabase_connected() -> bool:
     Performs a real, minimal network request to verify live connectivity
     and valid credentials against the remote Supabase API engine.
     """
-    global client
     try:
-        client = get_supabase_client()
+        # Use a localized client variable inside the check to prevent cross-scope pollution
+        active_client = get_supabase_client()
 
         # We query an internal vault/rpc metadata viewpoint that always exists by default.
         # This completely avoids having to build temporary testing schemas.
-        client.from_("_analytics").select("*").limit(1).execute()
+        active_client.from_("_analytics").select("*").limit(1).execute()
         return True
     except Exception:
-        # If _analytics is restricted under the current token setup,
-        # fallback to checking a basic authentication parameter lookup over the web.
+        # Fallback tracking if analytics tables are restricted under the current role token setup.
         try:
-            client.auth.get_session()
+            # We fetch the client safely again to guarantee it's assigned inside this block's scope
+            active_client = get_supabase_client()
+            active_client.auth.get_session()
             return True
         except Exception as e:
             print(f"\n[CRITICAL] Supabase Connection Health Check Failed: {e}\n")
