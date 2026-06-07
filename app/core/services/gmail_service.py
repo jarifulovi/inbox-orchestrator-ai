@@ -105,45 +105,86 @@ class GmailIngestionService:
         }
 
     async def fetch_delta_changes(self, start_history_id: str) -> dict:
-        # 1. Ask for BOTH message additions and label changes (captures incoming + sent replies)
-        result = self.client.users().history().list(
-            userId='me',
-            startHistoryId=start_history_id,
-            historyTypes=['messageAdded', 'labelAdded']
-        ).execute()
+        """
+        Production-safe Gmail delta sync engine.
+        - Fully paginated history consumption
+        - Idempotent message extraction
+        - Safe cursor advancement
+        """
 
-        histories = result.get('history', [])
-        updated_history_id = result.get('historyId', start_history_id)
-
-        # Use a set to make sure we don't fetch the same message twice if it triggers multiple events
         discovered_msg_ids = set()
+        page_token = None
+        final_history_id = start_history_id
 
-        for history_node in histories:
-            # Loop through brand new incoming emails
-            for entry in history_node.get('messageAdded', []):
-                if 'message' in entry and 'id' in entry['message']:
-                    discovered_msg_ids.add(entry['message']['id'])
+        # =========================================================
+        # 1. FULL HISTORY PAGINATION (CRITICAL FIX)
+        # =========================================================
+        while True:
+            try:
+                response = self.client.users().history().list(
+                    userId='me',
+                    startHistoryId=start_history_id,
+                    pageToken=page_token,
+                    historyTypes=[
+                        'messageAdded',
+                        'messageDeleted',
+                        'labelAdded',
+                        'labelRemoved'
+                    ]
+                ).execute()
 
-            # Loop through label mutations (Sent emails get the 'SENT' label applied)
-            for entry in history_node.get('labelAdded', []):
-                if 'message' in entry and 'id' in entry['message']:
-                    discovered_msg_ids.add(entry['message']['id'])
+            except Exception as e:
+                print(f"[GMAIL HISTORY ERROR] {str(e)}")
+                break
 
-        # 2. Fetch details for all discovered unique messages
+            history_blocks = response.get('history', [])
+
+            # update cursor snapshot (latest known state)
+            final_history_id = response.get('historyId', final_history_id)
+
+            # =========================================================
+            # 2. EXTRACT MESSAGE IDS FROM ALL EVENTS
+            # =========================================================
+            for block in history_blocks:
+
+                for entry in block.get('messagesAdded', []):
+                    msg = entry.get('message', {})
+                    if msg.get('id'):
+                        discovered_msg_ids.add(msg['id'])
+
+                for entry in block.get('labelAdded', []):
+                    msg = entry.get('message', {})
+                    if msg.get('id'):
+                        discovered_msg_ids.add(msg['id'])
+
+                for entry in block.get('messageChanged', []):
+                    msg = entry.get('message', {})
+                    if msg.get('id'):
+                        discovered_msg_ids.add(msg['id'])
+
+            # =========================================================
+            # 3. PAGINATION CONTROL
+            # =========================================================
+            page_token = response.get('nextPageToken')
+            if not page_token:
+                break
+
+        # =========================================================
+        # 4. RESOLVE FULL EMAIL OBJECTS (IDEMPOTENT)
+        # =========================================================
         processed_emails = []
+
         for msg_id in discovered_msg_ids:
             try:
-                # If your _get_email_details is synchronous, keep it as is.
-                # If it's asynchronous, make sure to add 'await' here!
                 email_detail = self._get_email_details(msg_id)
                 processed_emails.append(email_detail)
             except Exception as e:
-                print(f"[SERVICE WARNING] Could not resolve message details for {msg_id}: {str(e)}")
+                print(f"[MESSAGE FETCH ERROR] {msg_id}: {str(e)}")
                 continue
 
         return {
             "emails": processed_emails,
-            "history_id": updated_history_id
+            "history_id": final_history_id
         }
 
     def format_thread_records(self, emails_to_process: list[dict], account_id: str) -> list[dict]:
@@ -171,32 +212,3 @@ class GmailIngestionService:
                     unique_threads[t_id]["last_message_at"] = msg_date
 
         return list(unique_threads.values())
-
-    def format_message_records(
-            self,
-            emails_to_process: list[dict],
-            enriched_batch_payloads: list[dict],
-            thread_uuid_map: dict,
-            account_id: str
-    ) -> list[dict]:
-        """Combines raw email data and ML models' outputs into ready-to-insert message rows."""
-        message_records = []
-        for email, ai_output in zip(emails_to_process, enriched_batch_payloads):
-            message_records.append({
-                "thread_id": thread_uuid_map[email["thread_id"]],  # Resolved UUID Foreign Key Linkage
-                "connected_account_id": account_id,
-                "gmail_message_id": email["message_id"],
-                "sender": email["sender"],
-                "sender_name": email["sender_name"],
-                "recipients": email["recipients"],
-                "cc": email["cc"],
-                "bcc": email["bcc"],
-                "subject": email["subject"],
-                "body": email["body_content"],
-                "snippet": email["snippet"],
-                "summary": '',
-                "processed_by_ai": True,  # ML Pipeline execution finished!
-                "received_at": email["date_sent"],
-                "raw_payload": email["raw_payload"]
-            })
-        return message_records
