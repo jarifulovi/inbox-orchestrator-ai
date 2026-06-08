@@ -95,3 +95,26 @@ class ConnectedAccountService:
 
         # Generate and return a thread-safe Gmail engine resource instance
         return build('gmail', 'v1', credentials=creds)
+
+    def get_account_by_id(self, account_id: str) -> dict | None:
+        response = (
+            self.supabase
+            .table("connected_accounts")
+            .select("*")
+            .eq("id", account_id)
+            .single()
+            .execute()
+        )
+
+        return response.data if response.data else None
+
+    def get_active_google_accounts(self) -> list[dict]:
+        response = (
+            self.supabase
+            .table("connected_accounts")
+            .select("*")
+            .eq("is_active", True)
+            .eq("provider", "google")
+            .execute()
+        )
+        return response.data or []

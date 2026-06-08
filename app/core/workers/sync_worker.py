@@ -18,17 +18,12 @@ class EmailSyncWorker:
         self.INITIAL_BATCH_SIZE = 100
         self.FORCING_BACKFILL_BATCH_SIZE = 10
 
+
     async def run_sync_cycle(self):
-        """Main runner loop scanning for active user connections."""
-        print(f"[WORKER WAKEUP] Starting sync cycle sweep at {datetime.now(timezone.utc)}")
+        print(f"[WORKER WAKEUP] {datetime.now(timezone.utc)}")
 
-        response = self.supabase.table("connected_accounts") \
-            .select("*") \
-            .eq("is_active", True) \
-            .eq("provider", "google") \
-            .execute()
+        accounts = self.auth_manager.get_active_google_accounts()
 
-        accounts = response.data
         if not accounts:
             print("[WORKER] No active email connections found.")
             return
@@ -37,8 +32,24 @@ class EmailSyncWorker:
             try:
                 await self._process_account(account)
             except Exception as e:
-                print(f"[WORKER ERROR] Processing failed for account {account.get('provider_email')}: {str(e)}")
-                continue
+                print(f"[WORKER ERROR] {account.get('provider_email')}: {e}")
+
+
+    async def run_initial_backfill(self, account_id: str):
+
+        while True:
+            account = self.auth_manager.get_account_by_id(account_id)
+            if not account:
+                print(f"[WORKER] Account {account_id} not found.")
+                return
+
+            await self._process_account(account)
+            account = self.auth_manager.get_account_by_id(account_id)
+
+            if account["sync_mode"] == "ACTIVE":
+                print(f"[BACKFILL COMPLETE] {account['provider_email']}")
+                break
+
 
     async def _process_account(self, account: dict):
         account_id = account["id"]
@@ -218,6 +229,7 @@ class EmailSyncWorker:
                 "processed_by_ai": False,
                 "received_at": email.get("date_sent"),
                 "raw_payload": email.get("raw_payload")
+                # has_attachments used false for now
             })
 
         return records
