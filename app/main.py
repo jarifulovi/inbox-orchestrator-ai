@@ -1,8 +1,12 @@
 from fastapi import FastAPI
 from app.db.supabase import is_supabase_connected
 
-app = FastAPI()
+from app.api.app_exceptions import register_exception_handlers
+from app.api.auth_router import router as auth_router
 
+app = FastAPI(title="InboxOrchestrator AI Engine")
+app.include_router(auth_router, tags=["auth"])
+register_exception_handlers(app)
 
 @app.get("/")
 async def root():

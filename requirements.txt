@@ -10,3 +10,4 @@ contractions==0.1.73
 google-api-python-client
 protobuf
 httpx
+google-auth-oauthlib
