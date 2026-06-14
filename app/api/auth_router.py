@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks
 from supabase import Client
 
 from app.api.deps.auth import get_current_user
@@ -35,10 +35,12 @@ async def connect_google_account(
 async def google_callback(
     code: str,
     state: str,
+    background_tasks: BackgroundTasks,
     db: Client = Depends(get_supabase_client)
 ):
     service = AuthWebService(db_client=db)
     return await service.handle_google_callback(
         code=code,
-        state=state
+        state=state,
+        background_tasks=background_tasks
     )

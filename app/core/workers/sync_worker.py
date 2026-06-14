@@ -15,7 +15,7 @@ class EmailSyncWorker:
         self.auth_manager = ConnectedAccountService(db_client=self.supabase)
         self.ml_engine = MLEngineService()
 
-        self.INITIAL_BATCH_SIZE = 100
+        self.INITIAL_BATCH_SIZE = 20
         self.FORCING_BACKFILL_BATCH_SIZE = 10
 
 
@@ -36,20 +36,36 @@ class EmailSyncWorker:
 
 
     async def run_initial_backfill(self, account_id: str):
+        print(f"📥 [LOAD TEST START] Initializing high-volume sync for Account ID: {account_id}")
+        cycle_count = 0
 
         while True:
+            cycle_count += 1
             account = self.auth_manager.get_account_by_id(account_id)
             if not account:
-                print(f"[WORKER] Account {account_id} not found.")
+                print(f"❌ [WORKER] Account {account_id} not found or deleted from DB.")
                 return
 
-            await self._process_account(account)
+            # 1. Print current batch progress
+            print(f"🔄 [BATCH #{cycle_count}] Processing next batch for {account['provider_email']}...")
+
+            try:
+                # Execute the heavy fetching, parsing, and database saving
+                await self._process_account(account)
+            except Exception as e:
+                # 2. Catch unexpected failures so your loop doesn't break blindly
+                print(f"💥 [CRITICAL CRASH IN BATCH #{cycle_count}] Error: {str(e)}")
+                return
+
+            # Refresh the account state from the database
             account = self.auth_manager.get_account_by_id(account_id)
 
+            # 3. Print success indicator when Google pagination finally completes
             if account["sync_mode"] == "ACTIVE":
-                print(f"[BACKFILL COMPLETE] {account['provider_email']}")
+                print(f"✅ [LOAD TEST SUCCESS] {account['provider_email']} fully backfilled after {cycle_count} batches!")
                 break
-
+            # This gives FastAPI a microsecond window to handle incoming /me requests!
+            await asyncio.sleep(0.01)
 
     async def _process_account(self, account: dict):
         account_id = account["id"]

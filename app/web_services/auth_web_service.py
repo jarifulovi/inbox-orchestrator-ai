@@ -10,7 +10,10 @@ from dateutil.parser import isoparse
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
+from fastapi import BackgroundTasks
+from networkx.algorithms.components import connected
 
+from app.core.workers.sync_worker import EmailSyncWorker
 from app.schemas.auth_schemas import (
     MeResponseSchema,
     MeUserSchema,
@@ -121,7 +124,7 @@ class AuthWebService:
 
         return GoogleAuthUrlResponse(auth_url=auth_url)
 
-    async def handle_google_callback(self, code: str, state: str) -> RedirectResponse:
+    async def handle_google_callback(self, code: str, state: str, background_tasks: BackgroundTasks) -> RedirectResponse:
         # =========================
         # 1. Fetch OAuth state
         # =========================
@@ -230,13 +233,15 @@ class AuthWebService:
         # =========================
         # 6. Upsert connected account
         # =========================
-        self._upsert_connected_account(
+        connected_account = self._upsert_connected_account(
             user_id=user_id,
             provider_email=gmail_profile["email"],
             access_token=credentials.token,
             refresh_token=refresh_token,
             token_expiry=credentials.expiry
         )
+        connected_account_id = connected_account.get("id")
+        print(f"DEBUG: Successfully upserted account. ID is: {connected_account_id}")
 
         # =========================
         # 7. Mark state as used (ONLY after success)
@@ -245,6 +250,17 @@ class AuthWebService:
             .update({"used_at": datetime.now(timezone.utc).isoformat()}) \
             .eq("state", state) \
             .execute()
+
+        # ====================================================================
+        # 💡 STEP 8: Queue the Ingestion Layer (Instant non-blocking worker!)
+        # ====================================================================
+        # This registers the function to run instantly in the background.
+        # The user gets redirected to the frontend immediately while this runs!
+        sync_worker = EmailSyncWorker(db_client=self.db)
+        background_tasks.add_task(
+            sync_worker.run_initial_backfill,
+            account_id=connected_account_id,  # <-- First positional argument
+        )
 
         print("STATE RECEIVED AND VERIFIED:", state)
 
