@@ -20,22 +20,29 @@ class EmailClassifier:
         self.ensemble = EnsembleEmailClassifier()
         self.preprocess = EmailPreprocessor()
 
-    def predict(self, email_texts: list[str]) -> list[EmailClassificationPrediction]:
+    def predict(self, safe_nodes: list[dict]) -> list[EmailClassificationPrediction]:
         """
-        Predict classes for a batch of emails using the ensemble classifier.
-        Args:
-            email_texts (list[str]): List of email contents.
-        Returns:
-            list[EmailClassificationPrediction]: Batch predictions with labels, confidences, and probabilities.
+        Extracts [Subject + Body] matrices from safe nodes, cleanses them via
+        the Preprocessor, and delivers batch classifications using the ensemble.
         """
-        processed_texts = self.preprocess.batch_preprocess(email_texts)
+        combined_texts = []
+        for node in safe_nodes:
+            # 1. Extract Subject out of raw_payload headers matrix
+            payload = node.get("raw_payload", {})
+            headers = payload.get("headers", {})
+            subject = headers.get("Subject", "").strip()
+
+            # 2. Extract the clean plain-text body built by ML Service
+            body = node.get("cleaned_body", "")
+
+            # 3. Format into a combined string structure
+            combined_input = f"Subject: {subject}\nBody: {body}"
+            combined_texts.append(combined_input)
+
+        # 4. Pass the combined string array to your original internal pipelines
+        processed_texts = self.preprocess.batch_preprocess(combined_texts)
         return self.ensemble.predict(processed_texts)
 
-    def predict_request(
-        self,
-        request: EmailClassificationBatchRequest
-    ) -> list[EmailClassificationPrediction]:
-        return self.predict(request.email_texts)
 
 
 if __name__ == "__main__":

@@ -3,10 +3,12 @@ from typing import List
 from uuid import UUID, uuid4
 import spacy
 
-from app.schemas.extracted_actions import ExtractedActionBatchResponse
+from app.schemas.extracted_actions import ExtractedActionPrediction, ExtractedActionBatchResponse
 from app.models.action_extractor.components.deadline_normalizer import DeadlineNormalizer
 from app.models.action_extractor.spacy_engine import create_action_extractor
 from app.models.action_extractor.components.processors import TextPreprocessor, ActionPostprocessor
+
+
 
 
 class ActionExtractor:
@@ -18,31 +20,43 @@ class ActionExtractor:
         self.nlp.add_pipe("action_extractor_component", last=True)
 
 
-    def process_emails_bulk(
+    def predict(
             self,
-            emails: List[tuple[UUID, str]],  # Input format: [(email_id, body), (email_id, body)]
+            safe_nodes: list[dict],
             batch_size: int = 32
-    ) -> List[ExtractedActionBatchResponse]:
+    ) -> list[dict]:
+        """Processes safe nodes and returns a dense array of envelope records matching len(safe_nodes)."""
 
+        cleaned_pairs = [
+            (TextPreprocessor.clean(node.get("cleaned_body", "")), node.get("id"))
+            for node in safe_nodes
+        ]
 
-        cleaned_pairs = [(TextPreprocessor.clean(body), email_id) for email_id, body in emails]
-        bulk_responses: List[ExtractedActionBatchResponse] = []
+        dense_results: list[dict] = []
 
-        for doc, email_id in self.nlp.pipe(cleaned_pairs, as_tuples=True, batch_size=batch_size):
+        # Execute your optimized spaCy pipe stream
+        for doc, email_id in self.nlp.pipe(
+                cleaned_pairs,
+                as_tuples=True,
+                batch_size=batch_size,
+                disable=["ner"]
+        ):
+            # This must return a pure list[ExtractedActionPrediction] for this single email
             raw_actions = doc._.extracted_actions
             enriched_actions = DeadlineNormalizer.normalize_action_deadlines(raw_actions)
-            final_actions = ActionPostprocessor.process(enriched_actions)
 
-            batch_response = ExtractedActionBatchResponse(
+            # ActionPostprocessor yields: list[ExtractedActionPrediction]
+            final_actions_list: list[ExtractedActionPrediction] = ActionPostprocessor.process(enriched_actions)
+
+
+            envelope = ExtractedActionBatchResponse(
                 email_id=email_id,
-                actions=final_actions
+                actions=final_actions_list
             )
 
-            bulk_responses.append(batch_response)
+            dense_results.append(envelope.model_dump())
 
-        return bulk_responses
-
-
+        return dense_results
 
 
 
@@ -91,7 +105,7 @@ if __name__ == "__main__":
 
 
     converted_emails = test_task_emails
-    results = pipeline.process_emails_bulk(converted_emails)
+    results = pipeline.predict(converted_emails)
 
     for result in results:
         # 1. Convert the predictions inside the batch response into JSON-safe dictionaries
@@ -109,3 +123,18 @@ if __name__ == "__main__":
             print(json.dumps(serializable_actions, indent=2))
         else:
             print("Status: No actionable tasks detected for 'me' in this email. []")
+
+
+import spacy
+
+
+if __name__ == "__main__":
+    nlp = spacy.load("en_core_web_sm")
+    text = "Transfer the unallocated funds to escrow so accounting can balance the ledger sheets."
+    doc = nlp(text)
+
+    print(f"{'TOKEN':<12} | {'POS':<6} | {'DEP':<10} | {'HEAD':<12} | {'CHILDREN'}")
+    print("-" * 60)
+    for token in doc:
+        children = [c.text for c in token.children]
+        print(f"{token.text:<12} | {token.pos_:<6} | {token.dep_:<10} | {token.head.text:<12} | {children}")
