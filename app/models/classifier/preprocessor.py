@@ -16,10 +16,19 @@ class EmailPreprocessor:
     def preprocess(self, text: str) -> str:
         if self.lowercase:
             text = text.lower()
+
         if self.remove_urls:
-            text = self.url_pattern.sub('', text)
+            # 1. First, wipe out markdown link brackets containing URLs to avoid leaving `[]()` artifacts
+            text = re.sub(r'\[https?://[^\]]+\]\((https?://[^\)]+)\)', 'link.com', text)
+            # 2. Convert any remaining standalone raw URLs to a clean dummy domain matching training style
+            text = self.url_pattern.sub('link.com', text)
+            # 3. Defensive clear up for any leftover standalone brackets
+            text = re.sub(r'\[\s*\]|\(\s*\)', '', text)
+
         if self.remove_emails:
-            text = self.email_pattern.sub('', text)
+            text = self.email_pattern.sub('email.com', text)
+
+        text = re.sub(r'(?m)^\s*[-*_~=]{3,}\s*$', '', text)
         text = text.strip()
         return text
 

@@ -17,6 +17,7 @@ class TextPreprocessor:
         r"(?im)^\s*(from|sent|to|cc|bcc|subject|date)\s*:\s*.*$",
         r"(?im)^\s*on .+wrote:\s*$",
         r"(?im)^\s*[-_ ]*forwarded message[-_ ]*$",
+        r"(?im)^\s*[-*_~=]{3,}\s*$",
     )
 
     # Stage 3: Syntactic normalization for downstream rule-based extraction.
@@ -113,6 +114,8 @@ class TextPreprocessor:
         cleaned = re.sub(r"(?is)</\s*(p|div|li|tr|td|h[1-6])\s*>", "\n", cleaned)
         cleaned = re.sub(r"(?is)<[^>]+>", "", cleaned)
         cleaned = re.sub(r"(?m)^\s*>+\s?", "", cleaned)
+        url_pattern = r'https?://\S+'
+        cleaned = re.sub(url_pattern, "[LINK]", cleaned)
 
         for pattern in cls.STRUCTURAL_REMOVALS:
             cleaned = re.sub(pattern, "", cleaned)
@@ -163,6 +166,10 @@ class TextPreprocessor:
 
 
 class ActionPostprocessor:
+    ALLOWED_ACTION_VERBS = {
+        "verify", "review", "submit", "update", "approve", "confirm",
+        "check", "send", "sign", "complete", "schedule", "track"
+    }
     HARD_DELETE_VERBS = {
         # Original structural/helper verbs
         "let", "shall",
@@ -184,12 +191,10 @@ class ActionPostprocessor:
         "eat",
         "go",
         "view",
-        "let",
-        "shall"
     }
     HIGH_VALUE_OBJECT_CUES = {
         "contract", "proposal", "report", "article", "presentation", "doc", "file", "email", "ticket",
-        "pr", "code", "policy", "spec", "deck", "presentation", "invoice", "guideline"
+        "pr", "code", "policy", "spec", "deck", "invoice", "guideline"
     }
 
     @staticmethod
@@ -205,29 +210,30 @@ class ActionPostprocessor:
         if not action:
             return False
 
-        # Read the already-normalized, lowercase verb string directly
         verb = action.verb_primitive
         if not verb:
-            return False
-
-        # Gate 1: Check contextual casual boundaries
-        if verb in cls.CASUAL_VERBS:
-            # Gate 1a: Immediate hard delete overrides
-            if verb in cls.HARD_DELETE_VERBS:
-                return True
-
-            # Gate 1b: Save task if high-value corporate cues exist in object string
-            obj = action.object_primitive
-            if obj:
-                # No need for str().lower() here, obj is already normalized up front!
-                if any(cue in obj for cue in cls.HIGH_VALUE_OBJECT_CUES):
-                    return False
-
             return True
 
+        # Gate 1: Enforce the Hard Delete Shield
+        if verb in cls.HARD_DELETE_VERBS:
+            return True
+
+        # Gate 2: Enforce the Allowed Operational Verb Gateway
+        if verb not in cls.ALLOWED_ACTION_VERBS:
+            # Only drop verbs that are explicitly marked casual; unknown verbs pass through
+            if verb not in cls.CASUAL_VERBS:
+                return False
+
+        # Gate 3: Casual Context Boundary Checks
+        if verb in cls.CASUAL_VERBS or verb not in cls.ALLOWED_ACTION_VERBS:
+            # Contextual Override: Save task if high-value corporate cues exist in the sanitized object string
+            obj = action.object_primitive
+            if obj and any(cue in obj for cue in cls.HIGH_VALUE_OBJECT_CUES):
+                return False  # Saved by the high-value object cue!
+
+            return True  # Confirmed casual noise
+
         return False
-
-
 
     @staticmethod
     def _sanitize_object_clause(obj_value: str) -> str:
@@ -267,23 +273,22 @@ class ActionPostprocessor:
         processed_actions: List["ExtractedActionPrediction"] = []
 
         for action in actions:
-            # 1. NORMALIZE ONCE: Clean up everything right at the entryway
+            # 1. NORMALIZE ONCE: Clean up formatting right at the entryway
             action.verb_primitive = cls._normalize_signature_value(getattr(action, "verb_primitive", ""))
             action.object_primitive = cls._normalize_signature_value(getattr(action, "object_primitive", ""))
             action.source_sentence = cls._normalize_signature_value(getattr(action, "source_sentence", ""))
 
-            # 1. Filter out casual text noise
-            if cls._is_casual_action(action):
-                continue
-
-            # 2. Extract and sanitize core noun targets
+            # 2. SANITIZE TARGET OBJECTS FIRST: Clean noun clauses BEFORE checking context cues
             if action.object_primitive:
                 action.object_primitive = cls._sanitize_object_clause(action.object_primitive)
+
+            # 3. FILTER GATEWAY: Evaluate structured text boundaries and allowlists
+            if cls._is_casual_action(action):
+                continue
 
             processed_actions.append(action)
 
         return processed_actions
-
 
     @classmethod
     def process(cls, actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:

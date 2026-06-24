@@ -61,7 +61,7 @@ class ActionExtractor:
                 actions=final_actions_list
             )
 
-            dense_results.append(envelope.model_dump())
+            dense_results.append(envelope.model_dump(mode="json"))
 
         return dense_results
 

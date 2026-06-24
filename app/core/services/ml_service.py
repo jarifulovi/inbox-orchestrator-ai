@@ -9,6 +9,7 @@ from app.models.action_extractor.extractor import ActionExtractor
 from app.models.classifier.predictor import EmailClassifier
 from app.models.security import PostSecurityValidator
 from app.models.security.pre_security import PreSecurityFilter
+from app.models.unified_constants import ACTIONABLE_INTENT_LABELS
 
 
 class MLEngineService:
@@ -85,8 +86,8 @@ class MLEngineService:
             # A. Core Intent Category Inference
             predictions = self.classifier_engine.predict(safe_nodes)
 
-            # B. Action Extractor Pipeline (Now officially wired up!)
-            extracted_actions = self.action_extractor_pipeline.predict(safe_nodes)
+            # B. Action Extractor Pipeline
+            extracted_actions = self._extract_actions_selectively(safe_nodes, predictions)
 
             # C. Post Security Validator Engine (Now seamlessly receives real predictions/actions)
             post_sec_results = self.post_security_pipeline.predict(
@@ -129,6 +130,49 @@ class MLEngineService:
             }
             for i in range(len(email_nodes))
         ]
+
+    def _extract_actions_selectively(
+            self,
+            safe_nodes: list[dict],
+            predictions: list[Any]
+    ) -> list[dict]:
+        """
+        Filters out safe nodes that do not contain actionable labels based on the
+        predictions. Executes heavy pipeline compute only on high-value targets.
+        """
+        # Pre-allocate the list with empty fallbacks matching the exact length of safe_nodes
+        filtered_actions_matrix: list[dict] = [{}] * len(safe_nodes)
+
+        # Track items that need to go to the model
+        nodes_needing_inference: list[dict] = []
+        subset_to_safe_index_map: list[int] = []
+
+        for safe_idx, node in enumerate(safe_nodes):
+            classification_obj = predictions[safe_idx]
+            assigned_label = classification_obj.label if classification_obj else "system_automated"
+
+            # Check your newly derived O(1) Manifest Set
+            if assigned_label in ACTIONABLE_INTENT_LABELS:
+                nodes_needing_inference.append(node)
+                subset_to_safe_index_map.append(safe_idx)
+            else:
+                # Instant fallback gateway: No model compute cost for spam/promotional
+                filtered_actions_matrix[safe_idx] = {
+                    "email_id": node.get("id"),
+                    "actions": []
+                }
+
+        # Run model compute ONLY if we have actionable emails in the batch
+        if nodes_needing_inference:
+            computed_results = self.action_extractor_pipeline.predict(nodes_needing_inference)
+
+            # Re-map results back to their correct columnar positions in the safe_nodes array
+            for subset_idx, result_dict in enumerate(computed_results):
+                target_safe_idx = subset_to_safe_index_map[subset_idx]
+                filtered_actions_matrix[target_safe_idx] = result_dict
+
+        return filtered_actions_matrix
+
 
     def _apply_quarantine_fallback(
             self,
