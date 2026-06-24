@@ -30,13 +30,19 @@ class EmailClassifier:
             # 1. Extract Subject out of raw_payload headers matrix
             payload = node.get("raw_payload", {})
             headers = payload.get("headers", {})
-            subject = headers.get("Subject", "").strip()
+            # Case-insensitive subject fallback check
+            subject = (
+                    headers.get("Subject") or
+                    headers.get("subject") or
+                    headers.get("SUBJECT") or
+                    node.get("subject", "")
+            ).strip()
 
             # 2. Extract the clean plain-text body built by ML Service
             body = node.get("cleaned_body", "")
 
             # 3. Format into a combined string structure
-            combined_input = f"Subject: {subject}\nBody: {body}"
+            combined_input = f"{subject} {body}"
             combined_texts.append(combined_input)
 
         # 4. Pass the combined string array to your original internal pipelines
@@ -71,3 +77,7 @@ if __name__ == "__main__":
     results = clf.predict(emails)
     for i, res in enumerate(results):
         print(f"Email {i}: {res}")
+
+
+    email_body = "Confirm your email addressFollow the link below to confirm this email address and finish signing up.Confirm email address: [https://qyjwniizxidrfrzjxguq.supabase.co/auth/v1/verify?token=f69c0d987a545032aacf9b5b425e5892d7488c14f680f4952c4cad4d&type=signup&redirect_to=http://localhost:3000/](https://qyjwniizxidrfrzjxguq.supabase.co/auth/v1/verify?token=f69c0d987a545032aacf9b5b425e5892d7488c14f680f4952c4cad4d&type=signup&redirect_to=http://localhost:3000/)You're receiving this email because you signed up for an application powered by Supabase.Opt out of these emails: [https://supabase.com/opt-out/qyjwniizxidrfrzjxguq](https://supabase.com/opt-out/qyjwniizxidrfrzjxguq)"
+

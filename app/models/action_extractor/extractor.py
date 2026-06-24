@@ -41,13 +41,20 @@ class ActionExtractor:
                 batch_size=batch_size,
                 disable=["ner"]
         ):
-            # This must return a pure list[ExtractedActionPrediction] for this single email
-            raw_actions = doc._.extracted_actions
-            enriched_actions = DeadlineNormalizer.normalize_action_deadlines(raw_actions)
+            try:
+                # This must return a pure list[ExtractedActionPrediction] for this single email
+                raw_actions = doc._.extracted_actions
+                enriched_actions = DeadlineNormalizer.normalize_action_deadlines(raw_actions)
 
-            # ActionPostprocessor yields: list[ExtractedActionPrediction]
-            final_actions_list: list[ExtractedActionPrediction] = ActionPostprocessor.process(enriched_actions)
+                # ActionPostprocessor yields: list[ExtractedActionPrediction]
+                final_actions_list: list[ExtractedActionPrediction] = ActionPostprocessor.process(enriched_actions)
 
+            except Exception as e:
+                # Catch failures dynamically per node to guarantee batch continuity
+                print(f"[ML SERVICE ERROR] ActionExtractor item failure for email {email_id}: {e}")
+
+                # Defensive Fallback: Match your expected list[ExtractedActionPrediction] schema pattern
+                final_actions_list = []
 
             envelope = ExtractedActionBatchResponse(
                 email_id=email_id,
@@ -57,7 +64,6 @@ class ActionExtractor:
             dense_results.append(envelope.model_dump())
 
         return dense_results
-
 
 
 

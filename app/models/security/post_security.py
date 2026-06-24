@@ -21,7 +21,7 @@ class PostSecurityValidator:
             historical_context: list[dict] = None
     ) -> list[dict]:
         """
-        Executes Pass 2 deep behavioral context evaluation over safe data chunks.
+        Execates Pass 2 deep behavioral context evaluation over safe data chunks.
         Combines (Classifier + Actions) first to isolate structural threats,
         then evaluates historical profiles to detect anomalies.
         """
@@ -29,78 +29,98 @@ class PostSecurityValidator:
         context_pool = historical_context if historical_context else []
 
         for idx, node in enumerate(safe_nodes):
-            # Read metadata safely from prior layers using standard contract
-            classification_obj = classifications[idx]
-            action_envelope = actions[idx]
+            email_id = node.get("id")
+            try:
+                # Read metadata safely from prior layers using standard contract
+                classification_obj = classifications[idx]
+                action_envelope = actions[idx]
 
-            # Resolve classifier index safely; default to index 6 (work_professional) if missing
-            category_idx = classification_obj.category_index if classification_obj else 6
+                # Resolve classifier index safely; default to index 6 (work_professional) if missing
+                category_idx = classification_obj.label_id if classification_obj else 6
 
-            # Extract configuration parameters dynamically from your locked INTENT_MANIFEST
-            intent_config = INTENT_MANIFEST.get(category_idx, {"penalty_score": 0.1, "is_high_risk": False})
-            base_penalty = intent_config["penalty_score"]
-            is_high_risk_intent = intent_config["is_high_risk"]
+                # Extract configuration parameters dynamically from your locked INTENT_MANIFEST
+                intent_config = INTENT_MANIFEST.get(category_idx, {"penalty_score": 0.1, "is_high_risk": False})
+                base_penalty = intent_config["penalty_score"]
+                is_high_risk_intent = intent_config["is_high_risk"]
 
-            # Unpack the pure list of action items extracted from the email body text
-            action_items = action_envelope.get("actions", [])
+                # Unpack the pure list of action items extracted from the email body text
+                action_items = action_envelope.get("actions", []) if isinstance(action_envelope, dict) else []
 
-            # Dynamic arrays updated by downstream placeholder verification loops
-            detected_risks: list[str] = []
-            is_anomaly = False
+                # Dynamic arrays updated by downstream placeholder verification loops
+                detected_risks: list[str] = []
+                is_anomaly = False
 
-            # =====================================================================
-            # STEP A: COMBINE CLASSIFIER + ACTION EXTRACTOR (In-Message Evaluation)
-            # =====================================================================
-            has_structural_risk = self._evaluate_in_message_risk_profile(
-                category_idx=category_idx,
-                is_high_risk_intent=is_high_risk_intent,
-                action_items=action_items,
-                detected_risks=detected_risks
-            )
-
-            # =====================================================================
-            # STEP B: INTEGRATE HISTORICAL USER CONTEXT (Behavioral Anomaly Check)
-            # =====================================================================
-            if has_structural_risk and context_pool:
-                # Safely parse sender tracking parameters from the matrix pointers
-                payload = node.get("raw_payload", {})
-                headers = payload.get("headers", {})
-                sender_address = headers.get("From", "").strip()
-
-                is_anomaly = self._evaluate_historical_behavioral_shift(
-                    sender=sender_address,
+                # =====================================================================
+                # STEP A: COMBINE CLASSIFIER + ACTION EXTRACTOR (In-Message Evaluation)
+                # =====================================================================
+                has_structural_risk = self._evaluate_in_message_risk_profile(
                     category_idx=category_idx,
+                    is_high_risk_intent=is_high_risk_intent,
                     action_items=action_items,
-                    history=context_pool,
                     detected_risks=detected_risks
                 )
 
-            # =====================================================================
-            # STEP C: SCORE CALCULATION & MATRIX ASSEMBLE
-            # =====================================================================
-            # Apply dynamic modifiers on top of baseline weights from manifest
-            final_trust_score = base_penalty
+                # =====================================================================
+                # STEP B: INTEGRATE HISTORICAL USER CONTEXT (Behavioral Anomaly Check)
+                # =====================================================================
+                if has_structural_risk and context_pool:
+                    # Case-insensitive header extraction parsing from the matrix pointers
+                    payload = node.get("raw_payload") or {}
+                    headers = payload.get("headers") or {}
+                    sender_address = (
+                            headers.get("From") or
+                            headers.get("from") or
+                            headers.get("FROM") or
+                            node.get("sender", "")
+                    ).strip()
 
-            if is_anomaly:
-                # Pull penalty dynamically out of your manifest modifiers
-                anomaly_multiplier = ACTION_SECURITY_MANIFEST["multipliers"]["high_concern_anomaly_penalty"]
-                final_trust_score = round(base_penalty * anomaly_multiplier, 2)
+                    is_anomaly = self._evaluate_historical_behavioral_shift(
+                        sender=sender_address,
+                        category_idx=category_idx,
+                        action_items=action_items,
+                        history=context_pool,
+                        detected_risks=detected_risks
+                    )
 
-            # Resolve flat system level matching your exact manifest dictionary strings
-            if is_anomaly:
-                trust_level = "suspicious"  # Directly matches SECURITY_TRUST_LEVELS[3]
-            elif final_trust_score <= 0.2:
-                trust_level = "trusted"  # Directly matches SECURITY_TRUST_LEVELS[1]
-            else:
-                trust_level = "neutral"  # Directly matches SECURITY_TRUST_LEVELS[2]
+                # =====================================================================
+                # STEP C: SCORE CALCULATION & MATRIX ASSEMBLE
+                # =====================================================================
+                # Apply dynamic modifiers on top of baseline weights from manifest
+                final_trust_score = base_penalty
 
-            batch_predictions.append({
-                "security_trust_score": final_trust_score,
-                "security_trust_level": trust_level,
-                "is_phishing_anomaly": is_anomaly,
-                "risks_detected": detected_risks,
-                "context_records_evaluated": len(context_pool)
-            })
+                if is_anomaly:
+                    # Pull penalty dynamically out of your manifest modifiers
+                    anomaly_multiplier = ACTION_SECURITY_MANIFEST["multipliers"]["high_concern_anomaly_penalty"]
+                    final_trust_score = round(base_penalty * anomaly_multiplier, 2)
+
+                # Resolve flat system level matching your exact manifest dictionary strings
+                if is_anomaly:
+                    trust_level = "suspicious"  # Directly matches SECURITY_TRUST_LEVELS[3]
+                elif final_trust_score <= 0.2:
+                    trust_level = "trusted"  # Directly matches SECURITY_TRUST_LEVELS[1]
+                else:
+                    trust_level = "neutral"  # Directly matches SECURITY_TRUST_LEVELS[2]
+
+                batch_predictions.append({
+                    "security_trust_score": final_trust_score,
+                    "security_trust_level": trust_level,
+                    "is_phishing_anomaly": is_anomaly,
+                    "risks_detected": detected_risks,
+                    "context_records_evaluated": len(context_pool)
+                })
+
+            except Exception as e:
+                # Catch granular processing errors without crashing the continuous batch matrix execution
+                print(f"[ML SERVICE ERROR] PostSecurityValidator localized item failure for email {email_id}: {e}")
+
+                # Defensively append operational boundary defaults to align array dimensions
+                batch_predictions.append({
+                    "security_trust_score": 0.50,
+                    "security_trust_level": "neutral",
+                    "is_phishing_anomaly": False,
+                    "risks_detected": ["POST_SECURITY_EXECUTION_ERROR"],
+                    "context_records_evaluated": len(context_pool)
+                })
 
         return batch_predictions
 
