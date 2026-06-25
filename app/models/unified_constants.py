@@ -1,5 +1,10 @@
 # app/core/config/model_manifest.py
 
+CLASSIFIER_MODEL_NAME = "intent_classifier"
+CLASSIFIER_MODEL_VERSION = "v1.0"
+ACTION_EXTRACTOR_MODEL_NAME = "action_extractor"
+ACTION_EXTRACTOR_MODEL_VERSION = "v1.0"
+
 # =====================================================================
 # 1. INTENT CLASSIFIER MANIFEST (Index-Locked Single Source of Truth)
 # =====================================================================
