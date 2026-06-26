@@ -1,7 +1,7 @@
 # app/model/security/pre_security.py
 import re
 from typing import List, Dict, Tuple, Optional
-from app.schemas.security_analysis import PreSecurityPrediction
+from app.core.schemas.email_security_analysis import PreSecurityPrediction
 
 
 class PreSecurityFilter:

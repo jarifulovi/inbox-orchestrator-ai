@@ -7,7 +7,7 @@ from app.db.supabase import get_supabase_client
 from app.core.services.auth_service import ConnectedAccountService
 from app.core.services.gmail_service import GmailIngestionService
 from app.core.services.ml_service import MLEngineService
-from app.models.unified_constants import  CLASSIFIER_LABELS, CLASSIFIER_MODEL_VERSION, ACTION_EXTRACTOR_MODEL_VERSION
+from app.core.schemas.constants import CLASSIFIER_LABELS, CLASSIFIER_MODEL_VERSION, ACTION_EXTRACTOR_MODEL_VERSION
 
 
 class EmailSyncWorker:
@@ -185,7 +185,7 @@ class EmailSyncWorker:
                 if not skip_ml:
                     try:
                         print(f"[ML] Running batch inference on {len(emails_to_process)} emails...")
-                        ml_batch_outputs = await self.ml_engine.run_batch_inference(
+                        ml_batch_outputs = self.ml_engine.run_batch_inference(
                             email_nodes=emails_to_process,
                             historical_context=[]
                         )

@@ -11,7 +11,6 @@ from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from fastapi import BackgroundTasks
-from networkx.algorithms.components import connected
 
 from app.core.workers.sync_worker import EmailSyncWorker
 from app.schemas.auth_schemas import (

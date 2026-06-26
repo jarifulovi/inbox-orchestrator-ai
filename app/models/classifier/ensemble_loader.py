@@ -7,7 +7,7 @@ from transformers import (
 )
 from typing import Dict, Optional, List
 
-from app.schemas.email_classification import EmailClassificationPrediction
+from app.core.schemas.email_classifications import EmailClassificationPrediction
 
 ARTIFACTS = [
     ("best_model_fold_1_best", 1),

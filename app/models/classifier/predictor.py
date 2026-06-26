@@ -1,18 +1,11 @@
 try:
     from .ensemble_loader import EnsembleEmailClassifier
     from .preprocessor import EmailPreprocessor
-    from ...schemas.email_classification import (
-        EmailClassificationBatchRequest,
-        EmailClassificationPrediction
-    )
 except ImportError:
-    # Fallback for CLI usage
     from app.models.classifier.ensemble_loader import EnsembleEmailClassifier
     from app.models.classifier.preprocessor import EmailPreprocessor
-    from app.schemas.email_classification import (
-        EmailClassificationBatchRequest,
-        EmailClassificationPrediction
-    )
+
+from app.core.schemas.email_classifications import EmailClassificationPrediction
 
 
 class EmailClassifier:

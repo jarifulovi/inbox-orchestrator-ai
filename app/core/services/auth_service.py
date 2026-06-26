@@ -8,7 +8,7 @@ from app.db.supabase import get_supabase_client
 
 
 class ConnectedAccountService:
-    def __init__(self, db_client: Client = None):
+    def __init__(self, db_client: Client | None = None):
         # Gracefully accept an injected client or pull your global singleton connection
         self.supabase = db_client or get_supabase_client()
         self.client_id = os.getenv("OAUTH_CLIENT_ID")

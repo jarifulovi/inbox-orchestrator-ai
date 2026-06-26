@@ -3,7 +3,7 @@ import re
 import unicodedata
 from typing import List
 
-from app.schemas.extracted_actions import ExtractedActionPrediction
+from app.core.schemas.extracted_actions import ExtractedActionPrediction
 
 try:
     import contractions as contractions_lib
@@ -198,7 +198,7 @@ class ActionPostprocessor:
     }
 
     @staticmethod
-    def _normalize_signature_value(value: str) -> str:
+    def _normalize_signature_value(value: str | None) -> str:
         value = "" if value is None else str(value)
         value = unicodedata.normalize("NFKC", value)
         value = re.sub(r"\s+", " ", value).strip().casefold()
@@ -210,7 +210,7 @@ class ActionPostprocessor:
         if not action:
             return False
 
-        verb = action.verb_primitive
+        verb = action["verb_primitive"]
         if not verb:
             return True
 
@@ -227,7 +227,7 @@ class ActionPostprocessor:
         # Gate 3: Casual Context Boundary Checks
         if verb in cls.CASUAL_VERBS or verb not in cls.ALLOWED_ACTION_VERBS:
             # Contextual Override: Save task if high-value corporate cues exist in the sanitized object string
-            obj = action.object_primitive
+            obj = action["object_primitive"]
             if obj and any(cue in obj for cue in cls.HIGH_VALUE_OBJECT_CUES):
                 return False  # Saved by the high-value object cue!
 
@@ -236,7 +236,7 @@ class ActionPostprocessor:
         return False
 
     @staticmethod
-    def _sanitize_object_clause(obj_value: str) -> str:
+    def _sanitize_object_clause(obj_value: str | None) -> str:
         """Removes trailing dependent clauses and temporal noise from the core noun."""
         if not obj_value:
             return ""
@@ -254,9 +254,9 @@ class ActionPostprocessor:
 
         for action in actions:
             task_signature = (
-                getattr(action, "verb_primitive", ""),
-                getattr(action, "object_primitive", ""),
-                getattr(action, "source_sentence", ""),
+                action.get("verb_primitive", ""),
+                action.get("object_primitive", ""),
+                action.get("source_sentence", ""),
             )
             if task_signature not in seen_tasks:
                 seen_tasks.add(task_signature)
@@ -274,13 +274,13 @@ class ActionPostprocessor:
 
         for action in actions:
             # 1. NORMALIZE ONCE: Clean up formatting right at the entryway
-            action.verb_primitive = cls._normalize_signature_value(getattr(action, "verb_primitive", ""))
-            action.object_primitive = cls._normalize_signature_value(getattr(action, "object_primitive", ""))
-            action.source_sentence = cls._normalize_signature_value(getattr(action, "source_sentence", ""))
+            action["verb_primitive"] = cls._normalize_signature_value(action.get("verb_primitive", ""))
+            action["object_primitive"] = cls._normalize_signature_value(action.get("object_primitive", ""))
+            action["source_sentence"] = cls._normalize_signature_value(action.get("source_sentence", ""))
 
             # 2. SANITIZE TARGET OBJECTS FIRST: Clean noun clauses BEFORE checking context cues
-            if action.object_primitive:
-                action.object_primitive = cls._sanitize_object_clause(action.object_primitive)
+            if action["object_primitive"]:
+                action["object_primitive"] = cls._sanitize_object_clause(action["object_primitive"])
 
             # 3. FILTER GATEWAY: Evaluate structured text boundaries and allowlists
             if cls._is_casual_action(action):

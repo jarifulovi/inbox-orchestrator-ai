@@ -47,7 +47,7 @@ class ActionPostprocessorTests(unittest.TestCase):
 
         processed = ActionPostprocessor.process(actions)  # type: ignore[arg-type]
         self.assertEqual(len(processed), 1)
-        self.assertEqual(processed[0].verb_primitive, "review")
+        self.assertEqual(processed[0]["verb_primitive"], "review")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,3 @@
-import asyncio
-from datetime import datetime, timezone
 from supabase import Client
 
 from app.core.services.ml_service import MLEngineService
@@ -8,7 +6,7 @@ from app.db.supabase import get_supabase_client
 
 
 class MLRecoveryWorker:
-    def __init__(self, ml_engine=None, supabase_client: Client = None):
+    def __init__(self, ml_engine=None, supabase_client: Client | None = None):
         self.ml_engine = ml_engine or MLEngineService()
         self.supabase = supabase_client or get_supabase_client()
         self.BATCH_SIZE = 50

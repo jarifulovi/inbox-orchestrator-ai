@@ -1,9 +1,10 @@
 # app/models/security/post_security.py
-from typing import List, Dict, Any
-from app.models.unified_constants import (
+from typing import Any
+from app.core.schemas.email_classifications import EmailClassificationPrediction
+from app.core.schemas.extracted_actions import ExtractedActionBatchResponse
+from app.core.schemas.constants import (
     INTENT_MANIFEST,
     ACTION_SECURITY_MANIFEST,
-    SECURITY_TRUST_LEVELS,
     SECURITY_RISK_CATEGORIES
 )
 
@@ -16,12 +17,12 @@ class PostSecurityValidator:
     def predict(
             self,
             safe_nodes: list[dict],
-            classifications: list[Any],  # List[EmailClassificationPrediction]
-            actions: list[dict],  # List[ExtractedActionBatchResponse dicts]
-            historical_context: list[dict] = None
+            classifications: list[EmailClassificationPrediction],
+            actions: list[ExtractedActionBatchResponse],
+            historical_context: list[dict] | None = None
     ) -> list[dict]:
         """
-        Execates Pass 2 deep behavioral context evaluation over safe data chunks.
+        Executes Pass 2 deep behavioral context evaluation over safe data chunks.
         Combines (Classifier + Actions) first to isolate structural threats,
         then evaluates historical profiles to detect anomalies.
         """
@@ -36,7 +37,7 @@ class PostSecurityValidator:
                 action_envelope = actions[idx]
 
                 # Resolve classifier index safely; default to index 6 (work_professional) if missing
-                category_idx = classification_obj.label_id if classification_obj else 6
+                category_idx = classification_obj["label_id"] if classification_obj else 6
 
                 # Extract configuration parameters dynamically from your locked INTENT_MANIFEST
                 intent_config = INTENT_MANIFEST.get(category_idx, {"penalty_score": 0.1, "is_high_risk": False})

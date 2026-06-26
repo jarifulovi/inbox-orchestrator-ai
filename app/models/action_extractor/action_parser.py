@@ -1,7 +1,7 @@
 from typing import List
 
 from spacy.tokens import Token
-from app.schemas.extracted_actions import ExtractedActionPrediction
+from app.core.schemas.extracted_actions import ExtractedActionPrediction
 from app.models.action_extractor.components.action_detector import ActionDetector
 from app.models.action_extractor.components.ownership_detector import OwnershipDetector
 
@@ -113,8 +113,8 @@ class ActionParser:
                         # Anaphora pronoun contextual resolution fallback logic
                         if full_obj_text in {"it", "them", "this", "that", "both"} and len(extracted_actions) > 0:
                             for prev_act in reversed(extracted_actions):
-                                if prev_act.object_primitive and prev_act.object_primitive not in {"it", "them", "this", "that", "both"}:
-                                    full_obj_text = prev_act.object_primitive
+                                if prev_act["object_primitive"] and prev_act["object_primitive"] not in {"it", "them", "this", "that", "both"}:
+                                    full_obj_text = prev_act["object_primitive"]
                                     break
 
                         action_prediction = ExtractedActionPrediction(
@@ -205,7 +205,7 @@ class ActionParser:
         """
         # Dynamic lookup from Ownership registry to prevent string hardcoding
         od = OwnershipDetector()
-        IMPERATIVE_ACTIONS = od.ASSET_ROUTING_VERBS | od.DELEGATION_VERBS
+        imperative_actions = od.ASSET_ROUTING_VERBS | od.DELEGATION_VERBS
 
         for token in sent:
             # We only target misclassified Adverbs acting as the sentence ROOT
@@ -214,7 +214,7 @@ class ActionParser:
                 token_lemma = token.lemma_.lower()
 
                 # Verify it matches our action types and has child objects/prepositions
-                if token_text in IMPERATIVE_ACTIONS or token_lemma in IMPERATIVE_ACTIONS:
+                if token_text in imperative_actions or token_lemma in imperative_actions:
                     has_objects = any(c.dep_ in cls.TARGET_DEPS or c.dep_ == "prep" for c in token.children)
 
                     if has_objects:

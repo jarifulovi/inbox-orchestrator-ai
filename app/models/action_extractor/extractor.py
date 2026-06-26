@@ -1,11 +1,8 @@
-import json
-from typing import List
-from uuid import UUID, uuid4
-import spacy
-
-from app.schemas.extracted_actions import ExtractedActionPrediction, ExtractedActionBatchResponse
+from typing import cast
+from uuid import UUID
+from datetime import datetime
+from app.core.schemas.extracted_actions import ExtractedActionPrediction, ExtractedActionBatchResponse
 from app.models.action_extractor.components.deadline_normalizer import DeadlineNormalizer
-from app.models.action_extractor.spacy_engine import create_action_extractor
 from app.models.action_extractor.components.processors import TextPreprocessor, ActionPostprocessor
 
 
@@ -19,12 +16,11 @@ class ActionExtractor:
         # Append the custom logic component directly to the end of spaCy's pipeline
         self.nlp.add_pipe("action_extractor_component", last=True)
 
-
     def predict(
             self,
             safe_nodes: list[dict],
             batch_size: int = 32
-    ) -> list[dict]:
+    ) -> list[ExtractedActionBatchResponse]:
         """Processes safe nodes and returns a dense array of envelope records matching len(safe_nodes)."""
 
         cleaned_pairs = [
@@ -32,41 +28,52 @@ class ActionExtractor:
             for node in safe_nodes
         ]
 
-        dense_results: list[dict] = []
+        dense_results: list[ExtractedActionBatchResponse] = []
 
         # Execute your optimized spaCy pipe stream
-        for doc, email_id in self.nlp.pipe(
+        for doc, raw_email_id in self.nlp.pipe(
                 cleaned_pairs,
                 as_tuples=True,
                 batch_size=batch_size,
                 disable=["ner"]
         ):
+            # 1. Cast the 'Any' context token from spaCy explicitly to UUID to satisfy the linter
+            email_id: UUID = cast(UUID, raw_email_id)
+
             try:
-                # This must return a pure list[ExtractedActionPrediction] for this single email
                 raw_actions = doc._.extracted_actions
                 enriched_actions = DeadlineNormalizer.normalize_action_deadlines(raw_actions)
-
-                # ActionPostprocessor yields: list[ExtractedActionPrediction]
                 final_actions_list: list[ExtractedActionPrediction] = ActionPostprocessor.process(enriched_actions)
 
             except Exception as e:
-                # Catch failures dynamically per node to guarantee batch continuity
                 print(f"[ML SERVICE ERROR] ActionExtractor item failure for email {email_id}: {e}")
-
-                # Defensive Fallback: Match your expected list[ExtractedActionPrediction] schema pattern
                 final_actions_list = []
 
-            envelope = ExtractedActionBatchResponse(
-                email_id=email_id,
-                actions=final_actions_list
-            )
+            serialized_actions: list[ExtractedActionPrediction] = []
+            for action in final_actions_list:
+                # Safely modify the field in-place
+                value = action["parsed_deadline"]
+                if isinstance(value, datetime):
+                    action["parsed_deadline"] = value.isoformat()
+                else:
+                    action["parsed_deadline"] = None
 
-            dense_results.append(envelope.model_dump(mode="json"))
+                serialized_actions.append(action)
+
+            # 3. Construct your envelope mapping perfectly to ExtractedActionBatchResponse
+            envelope: ExtractedActionBatchResponse = {
+                "email_id": email_id,
+                "actions": serialized_actions
+            }
+
+            dense_results.append(envelope)
 
         return dense_results
 
 
 
+import json
+from uuid import uuid4
 # Quick self-contained execution script for testing local workflows
 if __name__ == "__main__":
     pipeline = ActionExtractor()

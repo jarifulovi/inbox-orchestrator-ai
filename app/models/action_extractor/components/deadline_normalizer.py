@@ -1,7 +1,7 @@
 from datetime import datetime, time
 from typing import List
 import dateparser
-from app.schemas.extracted_actions import ExtractedActionPrediction
+from app.core.schemas.extracted_actions import ExtractedActionPrediction
 
 
 class DeadlineNormalizer:
@@ -21,17 +21,17 @@ class DeadlineNormalizer:
         for action in actions:
             # Step 1: Pre-emptively catch text-based immediate cues ("right now", "asap")
             # These don't rely on entity parsing and keep precise hour/minute resolution
-            sentence_lower = action.source_sentence.lower()
+            sentence_lower = action["source_sentence"].lower()
             if any(cue in sentence_lower for cue in cls.IMMEDIATE_CUES):
-                action.parsed_deadline = datetime.now()
+                action["parsed_deadline"] = datetime.now()
                 continue  # Successfully resolved this task's deadline, move to next
 
             # If no raw text cues match, fall back to named entity analysis
-            if not action.raw_entities:
+            if not action["raw_entities"]:
                 continue
 
             # Step 2: Loop through discovered entity definitions
-            for ent in action.raw_entities:
+            for ent in action["raw_entities"]:
                 if ent["label"] not in ["DATE", "TIME"]:
                     continue
 
@@ -67,7 +67,7 @@ class DeadlineNormalizer:
                 if parsed_dt:
                     # Force calendar strings to zeroed-out midnight thresholds
                     # Example: 2026-06-02 14:30:00 -> 2026-06-02 00:00:00
-                    action.parsed_deadline = datetime.combine(parsed_dt.date(), time.min)
+                    action["parsed_deadline"] = datetime.combine(parsed_dt.date(), time.min)
                     break  # Assigned the primary valid date, stop inspecting further entities
 
         return actions

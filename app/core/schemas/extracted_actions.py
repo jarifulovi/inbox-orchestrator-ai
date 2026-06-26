@@ -7,7 +7,7 @@ class ExtractedActionPrediction(TypedDict):
     verb_primitive: str
     object_primitive: str | None
     source_sentence: str
-    parsed_deadline: datetime | None
+    parsed_deadline: datetime | str | None
     raw_entities: list[dict]
 
 
