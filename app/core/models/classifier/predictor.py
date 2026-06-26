@@ -2,8 +2,8 @@ try:
     from .ensemble_loader import EnsembleEmailClassifier
     from .preprocessor import EmailPreprocessor
 except ImportError:
-    from app.models.classifier.ensemble_loader import EnsembleEmailClassifier
-    from app.models.classifier.preprocessor import EmailPreprocessor
+    from app.core.models.classifier.ensemble_loader import EnsembleEmailClassifier
+    from app.core.models.classifier.preprocessor import EmailPreprocessor
 
 from app.core.schemas.email_classifications import EmailClassificationPrediction
 

@@ -2,8 +2,8 @@ from typing import cast
 from uuid import UUID
 from datetime import datetime
 from app.core.schemas.extracted_actions import ExtractedActionPrediction, ExtractedActionBatchResponse
-from app.models.action_extractor.components.deadline_normalizer import DeadlineNormalizer
-from app.models.action_extractor.components.processors import TextPreprocessor, ActionPostprocessor
+from app.core.models.action_extractor.components.deadline_normalizer import DeadlineNormalizer
+from app.core.models.action_extractor.components.processors import TextPreprocessor, ActionPostprocessor
 
 
 

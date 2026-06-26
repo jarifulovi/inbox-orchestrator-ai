@@ -1,6 +1,6 @@
 import unittest
 
-from app.models.action_extractor.components.processors import ActionPostprocessor, TextPreprocessor
+from app.core.models.action_extractor.components.processors import ActionPostprocessor, TextPreprocessor
 
 
 class DummyAction:

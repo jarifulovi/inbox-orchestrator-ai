@@ -2,7 +2,7 @@
 from typing import Any
 from app.core.schemas.email_classifications import EmailClassificationPrediction
 from app.core.schemas.extracted_actions import ExtractedActionBatchResponse
-from app.core.schemas.constants import (
+from app.core.models.unified_constants import (
     INTENT_MANIFEST,
     ACTION_SECURITY_MANIFEST,
     SECURITY_RISK_CATEGORIES

@@ -1,12 +1,12 @@
 from typing import Any, cast
 from bs4 import BeautifulSoup
 
-from app.models.action_extractor.extractor import ActionExtractor
-from app.models.classifier.predictor import EmailClassifier
-from app.models.security import PostSecurityValidator
-from app.models.security.pre_security import PreSecurityFilter
+from app.core.models.action_extractor.extractor import ActionExtractor
+from app.core.models.classifier.predictor import EmailClassifier
+from app.core.models.security import PostSecurityValidator
+from app.core.models.security.pre_security import PreSecurityFilter
 from app.core.schemas.extracted_actions import ExtractedActionBatchResponse
-from app.core.schemas.constants import ACTIONABLE_INTENT_LABELS
+from app.core.models.unified_constants import ACTIONABLE_INTENT_LABELS
 
 
 class MLEngineService:

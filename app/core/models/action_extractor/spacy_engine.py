@@ -1,6 +1,6 @@
 from spacy.language import Language
 from spacy.tokens import Doc
-from app.models.action_extractor.action_parser import ActionParser
+from app.core.models.action_extractor.action_parser import ActionParser
 
 # Define a custom attribute extension on spaCy's native Doc class
 # This allows us to access results using doc._.extracted_actions later

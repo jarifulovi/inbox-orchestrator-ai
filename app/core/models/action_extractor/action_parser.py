@@ -2,8 +2,8 @@ from typing import List
 
 from spacy.tokens import Token
 from app.core.schemas.extracted_actions import ExtractedActionPrediction
-from app.models.action_extractor.components.action_detector import ActionDetector
-from app.models.action_extractor.components.ownership_detector import OwnershipDetector
+from app.core.models.action_extractor.components.action_detector import ActionDetector
+from app.core.models.action_extractor.components.ownership_detector import OwnershipDetector
 
 
 class ActionParser:

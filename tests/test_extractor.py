@@ -4,7 +4,7 @@ import unicodedata
 from uuid import uuid4
 import unittest
 
-from app.models.action_extractor.extractor import ActionExtractor
+from app.core.models.action_extractor.extractor import ActionExtractor
 
 
 class ExtractorIntegrationTests(unittest.TestCase):

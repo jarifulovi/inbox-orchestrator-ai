@@ -7,7 +7,7 @@ from app.db.supabase import get_supabase_client
 from app.core.services.auth_service import ConnectedAccountService
 from app.core.services.gmail_service import GmailIngestionService
 from app.core.services.ml_service import MLEngineService
-from app.core.schemas.constants import CLASSIFIER_LABELS, CLASSIFIER_MODEL_VERSION, ACTION_EXTRACTOR_MODEL_VERSION
+from app.core.models.unified_constants import CLASSIFIER_LABELS, CLASSIFIER_MODEL_VERSION, ACTION_EXTRACTOR_MODEL_VERSION
 
 
 class EmailSyncWorker:
