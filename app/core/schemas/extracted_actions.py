@@ -3,6 +3,19 @@ from uuid import UUID
 from datetime import datetime
 
 
+class ExtractedActionPrediction(TypedDict):
+    verb_primitive: str
+    object_primitive: str | None
+    source_sentence: str
+    parsed_deadline: datetime | None
+    raw_entities: list[dict]
+
+
+class ExtractedActionBatchResponse(TypedDict):
+    email_id: UUID
+    actions: list[ExtractedActionPrediction]
+
+
 class ExtractedAction(TypedDict):
     id: NotRequired[UUID]
     extracted_at: NotRequired[datetime]

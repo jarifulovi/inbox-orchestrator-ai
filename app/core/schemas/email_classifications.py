@@ -3,6 +3,13 @@ from uuid import UUID
 from datetime import datetime
 
 
+class EmailClassificationPrediction(TypedDict):
+    label_id: int
+    label: str
+    confidence: float
+    probabilities: dict[str, float]
+
+
 class EmailClassification(TypedDict):
     id: NotRequired[UUID]
     classified_at: NotRequired[datetime]
