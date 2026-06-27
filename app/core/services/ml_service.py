@@ -1,12 +1,16 @@
+import asyncio
+from datetime import datetime, timezone
 from typing import Any, cast
 from bs4 import BeautifulSoup
+from dateutil import parser
 
 from app.core.models.action_extractor.extractor import ActionExtractor
 from app.core.models.classifier.predictor import EmailClassifier
 from app.core.models.security import PostSecurityValidator
 from app.core.models.security.pre_security import PreSecurityFilter
 from app.core.schemas.extracted_actions import ExtractedActionBatchResponse
-from app.core.models.unified_constants import ACTIONABLE_INTENT_LABELS
+from app.core.models.unified_constants import ACTIONABLE_INTENT_LABELS, CLASSIFIER_LABELS, CLASSIFIER_MODEL_VERSION, \
+    ACTION_EXTRACTOR_MODEL_VERSION
 
 
 class MLEngineService:
@@ -26,8 +30,6 @@ class MLEngineService:
             # 1. Strip out html
             raw_input = node.get("body") or node.get("snippet") or ""
             raw_text = self._html_to_text(raw_input)
-            print("The raw input : ", raw_input[:100])
-            print("The raw text : ", raw_text[:100])
 
             # 2. Standardize all line break formats and strip empty trailing gaps
             text = raw_text.replace("\r\n", "\n").replace("\r", "\n")
@@ -40,7 +42,6 @@ class MLEngineService:
 
             # 4. Bind the final string directly back to the matrix node
             node["cleaned_body"] = text if text else "[EMPTY_EMAIL]"
-            print("The cleaned text : ", node["cleaned_body"][:100], "\n")
 
         return email_nodes
 
@@ -208,6 +209,127 @@ class MLEngineService:
             "risks_detected": pred["security_risks"] if "security_risks" in pred else ["PRE_SECURITY_VIOLATION"],
             "context_records_evaluated": 0
         }
+
+
+    async def persist_ml_outputs(
+            self,
+            db_client,
+            email_records: list[dict],
+            ml_batch_outputs: list[dict]
+    ):
+        """
+        Orchestrates all ML persistence operations.
+        """
+        await asyncio.gather(
+            self._persist_classifications(db_client, email_records, ml_batch_outputs),
+            self._persist_extracted_actions(db_client, email_records, ml_batch_outputs)
+        )
+
+    async def _persist_classifications(
+            self,
+            db_client,
+            email_records: list[dict],
+            ml_batch_outputs: list[dict]
+    ):
+        """
+        Persists classification outputs into email_classifications table.
+        """
+        if not email_records or not ml_batch_outputs:
+            return
+
+        classification_rows = []
+        for email, ml in zip(email_records, ml_batch_outputs):
+            classification = ml.get("classification", {})
+            label_id = classification.get("label_id")
+            label_name = classification.get("label")
+
+            # Fallback block just in case something comes up completely blank
+            if label_id is None:
+                print(f"[ML WARNING] Missing label_id for email {email['id']}. Applying defaults.")
+                label_id = -1
+                label_name = label_name or "UNCATEGORIZED"
+
+            classification_rows.append({
+                "email_id": email["id"],
+                "label_id": label_id,
+                "label": label_name,
+                "confidence": classification.get("confidence", 0.0),
+                "probabilities": classification.get("probabilities", {}),
+                "model_version": CLASSIFIER_MODEL_VERSION,
+                "classified_at": datetime.now(timezone.utc).isoformat()
+            })
+
+        try:
+            db_client.table("email_classifications").upsert(
+                classification_rows,
+                on_conflict="email_id"
+            ).execute()
+
+            print(f"[ML SUCCESS] Stored {len(classification_rows)} classifications")
+
+        except Exception as e:
+            print(f"[ML ERROR] Classification insert failed: {str(e)}")
+
+
+    async def _persist_extracted_actions(
+        self,
+        db_client,
+        email_records: list[dict],
+        ml_batch_outputs: list[dict]
+    ):
+        """
+        Persists NLP action extraction outputs into extracted_actions table.
+        One email → multiple action rows.
+        """
+        if not email_records or not ml_batch_outputs:
+            return
+
+        action_rows = []
+        for email, ml in zip(email_records, ml_batch_outputs):
+            actions = ml.get("actions", {})
+            action_items = actions.get("action_items", [])
+
+            for action in action_items:
+                action_rows.append({
+                    "email_id": email["id"],
+                    "verb_primitive": action.get("verb"),
+                    "object_primitive": action.get("object"),
+                    "source_sentence": action.get("sentence"),
+                    "raw_entities": action.get("entities", {}),
+                    "parsed_deadline": self._safe_parse_datetime(
+                        action.get("deadline")
+                    ),
+                    "model_version": ACTION_EXTRACTOR_MODEL_VERSION,
+                    "extracted_at": datetime.now(timezone.utc).isoformat()
+                })
+
+        if not action_rows:
+            print("[ML ACTIONS] No actions extracted")
+            return
+
+        try:
+            db_client.table("extracted_actions").insert(
+                action_rows
+            ).execute()
+
+            print(f"[ML SUCCESS] Stored {len(action_rows)} extracted actions")
+
+        except Exception as e:
+            print(f"[ML ERROR] Action insert failed: {str(e)}")
+
+
+    def _safe_parse_datetime(self, value):
+        """
+        Converts extracted deadline into TIMESTAMPTZ-safe format.
+        """
+        if not value:
+            return None
+
+        try:
+            return parser.parse(value).isoformat()
+        except Exception:
+            return None
+
 
     def _html_to_text(self, html: str) -> str:
         if not html:

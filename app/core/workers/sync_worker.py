@@ -1,20 +1,17 @@
-# app/core/workers/sync_worker.py
 import asyncio
-from dateutil import parser
 from datetime import datetime, timezone
 from supabase import Client
 from app.db.supabase import get_supabase_client
 from app.core.services.auth_service import ConnectedAccountService
 from app.core.services.gmail_service import GmailIngestionService
 from app.core.services.ml_service import MLEngineService
-from app.core.models.unified_constants import CLASSIFIER_LABELS, CLASSIFIER_MODEL_VERSION, ACTION_EXTRACTOR_MODEL_VERSION
 
 
 class EmailSyncWorker:
     def __init__(self, db_client: Client | None = None, ml_engine = None):
         self.supabase = db_client or get_supabase_client()
         self.auth_manager = ConnectedAccountService(db_client=self.supabase)
-        self.ml_engine = ml_engine or MLEngineService()
+        self.ml_engine = ml_engine
 
         self.INITIAL_BATCH_SIZE = 20
         self.FORCING_BACKFILL_BATCH_SIZE = 10
@@ -38,7 +35,7 @@ class EmailSyncWorker:
                 continue
 
             try:
-                await self._process_account(account, True)
+                await self._process_account(account, False)
             except Exception as e:
                 print(f"[WORKER ERROR] {account.get('provider_email')}: {e}")
 
@@ -185,13 +182,18 @@ class EmailSyncWorker:
                 if not skip_ml:
                     try:
                         print(f"[ML] Running batch inference on {len(emails_to_process)} emails...")
+                        self.ml_engine = self._get_or_init_ml_engine()
                         ml_batch_outputs = self.ml_engine.run_batch_inference(
                             email_nodes=emails_to_process,
                             historical_context=[]
                         )
 
-                        # Execute ML persistence helper passing database identities
-                        await self._persist_ml_outputs(email_save_res.data, ml_batch_outputs)
+                        # Execute ML persistence
+                        await self.ml_engine.persist_ml_outputs(
+                            self.supabase,
+                            email_save_res.data,
+                            ml_batch_outputs
+                        )
                         print(f"[ML SUCCESS] Persisted classifications and extracted actions")
                     except Exception as ml_err:
                         # Prevent ML execution issues from crashing the ingestion pipeline
@@ -253,113 +255,13 @@ class EmailSyncWorker:
         return records
 
 
-    async def _persist_ml_outputs(
-            self,
-            email_records: list[dict],
-            ml_batch_outputs: list[dict]
-    ):
-        """
-        Orchestrates all ML persistence operations.
-        """
-        await asyncio.gather(
-            self._persist_classifications(email_records, ml_batch_outputs),
-            self._persist_extracted_actions(email_records, ml_batch_outputs)
-        )
+    def _get_or_init_ml_engine(self) -> MLEngineService:
+        """Lazily instantiates the ML engine if it hasn't been warmed up yet."""
+        if self.ml_engine is None:
+            print("[ML] Lazy-initializing MLEngineService instance...")
+            self.ml_engine = MLEngineService()
+        return self.ml_engine
 
-    async def _persist_classifications(
-            self,
-            email_records: list[dict],
-            ml_batch_outputs: list[dict]
-    ):
-        """
-        Persists classification outputs into email_classifications table.
-        """
-        if not email_records or not ml_batch_outputs:
-            return
-
-        classification_rows = []
-        for email, ml in zip(email_records, ml_batch_outputs):
-            classification = ml.get("classification", {})
-
-            classification_rows.append({
-                "email_id": email["id"],
-                "label_id": CLASSIFIER_LABELS.get(classification.get("category")),
-                "label": classification.get("category"),
-                "confidence": classification.get("confidence", 0.0),
-                "probabilities": classification.get("probabilities", {}),
-                "model_version": CLASSIFIER_MODEL_VERSION,
-                "classified_at": datetime.now(timezone.utc).isoformat()
-            })
-
-        try:
-            self.supabase.table("email_classifications").upsert(
-                classification_rows,
-                on_conflict="email_id"
-            ).execute()
-
-            print(f"[ML SUCCESS] Stored {len(classification_rows)} classifications")
-
-        except Exception as e:
-            print(f"[ML ERROR] Classification insert failed: {str(e)}")
-
-
-    async def _persist_extracted_actions(
-        self,
-        email_records: list[dict],
-        ml_batch_outputs: list[dict]
-    ):
-        """
-        Persists NLP action extraction outputs into extracted_actions table.
-        One email → multiple action rows.
-        """
-        if not email_records or not ml_batch_outputs:
-            return
-
-        action_rows = []
-        for email, ml in zip(email_records, ml_batch_outputs):
-            actions = ml.get("actions", {})
-            action_items = actions.get("action_items", [])
-
-            for action in action_items:
-                action_rows.append({
-                    "email_id": email["id"],
-                    "verb_primitive": action.get("verb"),
-                    "object_primitive": action.get("object"),
-                    "source_sentence": action.get("sentence"),
-                    "raw_entities": action.get("entities", {}),
-                    "parsed_deadline": self._safe_parse_datetime(
-                        action.get("deadline")
-                    ),
-                    "model_version": ACTION_EXTRACTOR_MODEL_VERSION,
-                    "extracted_at": datetime.now(timezone.utc).isoformat()
-                })
-
-        if not action_rows:
-            print("[ML ACTIONS] No actions extracted")
-            return
-
-        try:
-            self.supabase.table("extracted_actions").insert(
-                action_rows
-            ).execute()
-
-            print(f"[ML SUCCESS] Stored {len(action_rows)} extracted actions")
-
-        except Exception as e:
-            print(f"[ML ERROR] Action insert failed: {str(e)}")
-
-
-    def _safe_parse_datetime(self, value):
-        """
-        Converts extracted deadline into TIMESTAMPTZ-safe format.
-        """
-        if not value:
-            return None
-
-        try:
-            return parser.parse(value).isoformat()
-        except Exception:
-            return None
 
 
 if __name__ == "__main__":

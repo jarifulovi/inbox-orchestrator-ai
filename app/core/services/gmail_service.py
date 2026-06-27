@@ -1,4 +1,3 @@
-# app/core/services/gmail_service.py
 import base64
 import email.utils
 from datetime import datetime, timezone
@@ -65,7 +64,7 @@ class GmailIngestionService:
         sender_name, sender_email = email.utils.parseaddr(raw_from)
 
         return {
-            "message_id": message_id,
+            "gmail_message_id": message_id,
             "thread_id": msg_detail.get("threadId"),
             "sender": sender_email if sender_email else raw_from,
             "sender_name": sender_name if sender_name else None,
@@ -75,7 +74,7 @@ class GmailIngestionService:
             "subject": subject,
             "date_sent": date_sent,
             "snippet": msg_detail.get("snippet", ""),
-            "body_content": self._extract_email_body(payload).strip(),
+            "body": self._extract_email_body(payload).strip(),
             "raw_payload": msg_detail
         }
 

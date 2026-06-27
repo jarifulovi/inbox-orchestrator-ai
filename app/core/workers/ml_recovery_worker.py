@@ -19,7 +19,8 @@ class MLRecoveryWorker:
             # We select email fields and left-join email_classifications, filtering for null
             response = self.supabase.table("emails") \
                 .select("*, email_classifications(id)") \
-                .is_("email_classifications", "null") \
+                .is_("email_classifications.id", "null") \
+                .order("received_at", desc=True) \
                 .limit(self.BATCH_SIZE) \
                 .execute()
 
@@ -42,21 +43,15 @@ class MLRecoveryWorker:
             )
 
             # 4. Save the ML outputs
-            # Passing raw database records as the 'email_save_res' equivalent
-            # so the helper maps UUIDs accurately.
-            await self._persist_ml_outputs(unprocessed_emails, ml_batch_outputs)
+            await self.ml_engine.persist_ml_outputs(
+                self.supabase,
+                unprocessed_emails,
+                ml_batch_outputs)
             print(f"[ML RECOVERY SUCCESS] Successfully caught up {len(email_nodes)} emails!")
 
         except Exception as e:
             print(f"[ML RECOVERY CRITICAL ERROR] Recovery worker cycle failed: {str(e)}")
 
-    async def _persist_ml_outputs(self, email_records: list, ml_batch_outputs: list[dict]):
-        """
-        Re-use or adapt your existing ML database persistence logic here.
-        Make sure it maps email records to your classifications and actions tables.
-        """
-        # TODO: We can extract a method in core/services/ml_service.py for resuable ML persistence
-        pass
 
     def _build_email_nodes(self, unprocessed_emails: list[dict]) -> list[dict]:
         """Transforms raw DB email records into the structural format expected by MLEngine."""
