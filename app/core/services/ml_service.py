@@ -286,18 +286,36 @@ class MLEngineService:
 
         action_rows = []
         for email, ml in zip(email_records, ml_batch_outputs):
-            actions = ml.get("actions", {})
-            action_items = actions.get("action_items", [])
+            if not isinstance(ml, dict):
+                continue
 
+            # 1. This grabs your final_actions[i] wrapper dictionary
+            raw_actions_payload = ml.get("actions", []) or []
+
+            action_items = []
+
+            # 2. Safely unpack the true array from the wrapper dictionary
+            if isinstance(raw_actions_payload, dict):
+                action_items = raw_actions_payload.get("actions", []) or []
+            elif isinstance(raw_actions_payload, list):
+                action_items = raw_actions_payload
+
+            if not isinstance(action_items, list):
+                continue
             for action in action_items:
+                if not isinstance(action, dict):
+                    print(
+                        f"[ML WARNING] Skipping malformed action item (expected dict, got {type(action).__name__}): {action}")
+                    continue
+
                 action_rows.append({
                     "email_id": email["id"],
-                    "verb_primitive": action.get("verb"),
-                    "object_primitive": action.get("object"),
-                    "source_sentence": action.get("sentence"),
-                    "raw_entities": action.get("entities", {}),
+                    "verb_primitive": action.get("verb_primitive"),
+                    "object_primitive": action.get("object_primitive"),
+                    "source_sentence": action.get("source_sentence"),
+                    "raw_entities": action.get("raw_entities", {}),
                     "parsed_deadline": self._safe_parse_datetime(
-                        action.get("deadline")
+                        action.get("parsed_deadline")
                     ),
                     "model_version": ACTION_EXTRACTOR_MODEL_VERSION,
                     "extracted_at": datetime.now(timezone.utc).isoformat()

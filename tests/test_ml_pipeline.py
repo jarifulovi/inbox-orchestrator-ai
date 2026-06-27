@@ -7,8 +7,7 @@ from uuid import UUID
 
 # Import your core orchestrator engine
 from app.core.services.ml_service import MLEngineService
-from app.core.models.action_extractor.components.processors import TextPreprocessor
-from app.core.models.classifier.preprocessor import EmailPreprocessor
+import app.core.models.action_extractor.spacy_engine
 
 
 def run_pipeline_integration_test(email_limit: int = 2):
