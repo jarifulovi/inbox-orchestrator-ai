@@ -66,3 +66,12 @@ class BatchThreadResolution(BaseModel):
     task_evaluations: List[TaskResolution] = Field(
         description="List of resolution analysis records for each evaluated task ID."
     )
+
+
+class ExtractedTaskBlueprint(BaseModel):
+    """The core task details extracted by Gemini from an email context."""
+    is_actionable_task: bool = Field(description="True if the extracted action represents a real, uncompleted task that a user needs to act on. False if it's informational, already done, or too vague.")
+    title: str = Field(description="Actionable and clear title for the task.")
+    priority: str = Field(description="Task urgency: 'high', 'medium', or 'low'.")
+    action_fingerprint: str = Field(description="A unique 3-5 word deterministic identifier for the action type (e.g., 'invoice_payment_followup'). Standardize this across similar actions.")
+    due_date_days_from_now: Optional[int] = Field(description="Days from today this task should be due based on email context, or null.")
