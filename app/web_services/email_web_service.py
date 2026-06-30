@@ -1,7 +1,7 @@
 import base64
 from typing import List, Dict, Any, Optional
 from supabase import Client
-from app.db.supabase import get_supabase_client
+from app.core.db.supabase import get_supabase_client
 
 class EmailWebService:
     def __init__(self, db_client: Optional[Client] = None):

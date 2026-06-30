@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 from supabase import Client
-from app.db.supabase import get_supabase_client
+from app.core.db.supabase import get_supabase_client
 from app.core.services.auth_service import ConnectedAccountService
 from app.core.services.gmail_service import GmailIngestionService
 from app.core.services.ml_service import MLEngineService

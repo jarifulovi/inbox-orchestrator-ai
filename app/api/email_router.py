@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from app.web_services.email_web_service import EmailWebService
 from app.api.deps.account import get_verified_account_id
-from app.db.supabase import get_supabase_client
+from app.core.db.supabase import get_supabase_client
 
 router = APIRouter(prefix="/api/emails", tags=["emails"])
 

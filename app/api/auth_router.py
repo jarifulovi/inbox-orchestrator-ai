@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, BackgroundTasks
 from supabase import Client
 
 from app.api.deps.auth import get_current_user
-from app.db.supabase import get_supabase_client
+from app.core.db.supabase import get_supabase_client
 from app.schemas.auth_schemas import MeResponseSchema, GoogleAuthUrlResponse, GoogleCallbackResponse
 from app.web_services.auth_web_service import AuthWebService
 

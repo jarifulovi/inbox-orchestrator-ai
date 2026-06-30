@@ -4,12 +4,12 @@ from typing import Any, cast
 from bs4 import BeautifulSoup
 from dateutil import parser
 
-from app.core.models.action_extractor.extractor import ActionExtractor
-from app.core.models.classifier.predictor import EmailClassifier
-from app.core.models.security import PostSecurityValidator
-from app.core.models.security.pre_security import PreSecurityFilter
+from app.core.ml_models.action_extractor.extractor import ActionExtractor
+from app.core.ml_models.classifier.predictor import EmailClassifier
+from app.core.ml_models.security import PostSecurityValidator
+from app.core.ml_models.security.pre_security import PreSecurityFilter
 from app.core.schemas.extracted_actions import ExtractedActionBatchResponse
-from app.core.models.unified_constants import ACTIONABLE_INTENT_LABELS, CLASSIFIER_LABELS, CLASSIFIER_MODEL_VERSION, \
+from app.core.ml_models.unified_constants import ACTIONABLE_INTENT_LABELS, CLASSIFIER_LABELS, CLASSIFIER_MODEL_VERSION, \
     ACTION_EXTRACTOR_MODEL_VERSION
 
 

@@ -1,5 +1,5 @@
 from fastapi import Depends, Header, HTTPException
-from app.db.supabase import get_supabase_client
+from app.core.db.supabase import get_supabase_client
 from app.web_services.auth_web_service import AuthWebService
 
 

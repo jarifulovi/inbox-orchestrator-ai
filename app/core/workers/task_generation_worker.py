@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone, timedelta
-from app.db.supabase import get_supabase_client
+from app.core.db.supabase import get_supabase_client
 from app.core.services.tasks.task_generation import TaskGenerationService
 from app.core.llm.client import LLMClient
 

@@ -1,7 +1,7 @@
 import os
 
 from fastapi import FastAPI
-from app.db.supabase import is_supabase_connected
+from app.core.db.supabase import is_supabase_connected
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.app_exceptions import register_exception_handlers
 from app.api.auth_router import router as auth_router

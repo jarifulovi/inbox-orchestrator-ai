@@ -4,7 +4,7 @@ import httpx
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from supabase import Client
-from app.db.supabase import get_supabase_client
+from app.core.db.supabase import get_supabase_client
 
 
 class ConnectedAccountService:

@@ -1,6 +1,6 @@
 from typing import List
-from core.llm.client import LLMClient
-from core.schemas.tasks import WorkerThreadContext, BatchThreadResolution, TaskUpdatePayload
+from app.core.llm.client import LLMClient
+from app.core.schemas.tasks import WorkerThreadContext, BatchThreadResolution, TaskUpdatePayload
 
 class TaskResolutionService:
     def __init__(self, llm_client: LLMClient):

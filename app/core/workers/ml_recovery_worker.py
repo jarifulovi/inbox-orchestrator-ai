@@ -1,7 +1,7 @@
 from supabase import Client
 
 from app.core.services.ml_service import MLEngineService
-from app.db.supabase import get_supabase_client
+from app.core.db.supabase import get_supabase_client
 
 
 

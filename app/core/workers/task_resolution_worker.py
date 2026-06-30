@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from app.db.supabase import get_supabase_client
+from app.core.db.supabase import get_supabase_client
 from app.core.services.tasks.task_resolution import TaskResolutionService
 from app.core.llm.client import LLMClient
 from app.core.schemas.tasks import WorkerThreadContext

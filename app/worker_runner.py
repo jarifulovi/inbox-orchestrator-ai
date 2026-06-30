@@ -3,7 +3,7 @@ import asyncio
 from app.core.services.ml_service import MLEngineService
 from app.core.workers.sync_worker import EmailSyncWorker
 from app.core.workers.ml_recovery_worker import MLRecoveryWorker
-import app.core.models.action_extractor.spacy_engine
+import app.core.ml_models.action_extractor.spacy_engine
 from app.feature_runner import FeatureWorkerRunner
 
 # The main periodic worker orchestrator

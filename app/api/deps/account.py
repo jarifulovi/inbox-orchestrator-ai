@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, Query
 from app.api.deps.auth import get_current_user
-from app.db.supabase import get_supabase_client
+from app.core.db.supabase import get_supabase_client
 
 
 async def get_verified_account_id(
