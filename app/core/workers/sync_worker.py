@@ -35,7 +35,9 @@ class EmailSyncWorker:
                 continue
 
             try:
-                await self._process_account(account, False)
+                import os
+                skip_ml = os.getenv("SKIP_ML", "False").lower() in ("true", "1", "t", "y", "yes")
+                await self._process_account(account, skip_ml)
             except Exception as e:
                 print(f"[WORKER ERROR] {account.get('provider_email')}: {e}")
 
@@ -189,9 +191,13 @@ class EmailSyncWorker:
                         )
 
                         # Execute ML persistence
+                        emails_data = email_save_res.data or []
+                        for email_record in emails_data:
+                            email_record["user_id"] = account.get("user_id")
+
                         await self.ml_engine.persist_ml_outputs(
                             self.supabase,
-                            email_save_res.data,
+                            emails_data,
                             ml_batch_outputs
                         )
                         print(f"[ML SUCCESS] Persisted classifications and extracted actions")

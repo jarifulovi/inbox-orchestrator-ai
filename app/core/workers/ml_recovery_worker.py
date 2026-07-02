@@ -18,13 +18,18 @@ class MLRecoveryWorker:
             # 1. Fetch raw emails that lack matching email_classifications
             # We select email fields and left-join email_classifications, filtering for null
             response = self.supabase.table("emails") \
-                .select("*, email_classifications(id)") \
+                .select("*, connected_accounts(user_id), email_classifications(id)") \
                 .is_("email_classifications.id", "null") \
                 .order("received_at", desc=True) \
                 .limit(self.BATCH_SIZE) \
                 .execute()
 
             unprocessed_emails = response.data or []
+
+            # Populate user_id directly inside unprocessed_emails
+            for email in unprocessed_emails:
+                connected_account = email.get("connected_accounts") or {}
+                email["user_id"] = connected_account.get("user_id")
 
             if not unprocessed_emails:
                 print("[ML RECOVERY] Everything is up to date. No catch-up required.")

@@ -302,6 +302,11 @@ class MLEngineService:
 
             if not isinstance(action_items, list):
                 continue
+
+            # Resolve user_id and anchor_date
+            user_id = email.get("user_id")
+            anchor_date = self._safe_parse_datetime(email.get("received_at"))
+
             for action in action_items:
                 if not isinstance(action, dict):
                     print(
@@ -310,6 +315,8 @@ class MLEngineService:
 
                 action_rows.append({
                     "email_id": email["id"],
+                    "user_id": user_id,
+                    "anchor_date": anchor_date,
                     "verb_primitive": action.get("verb_primitive"),
                     "object_primitive": action.get("object_primitive"),
                     "source_sentence": action.get("source_sentence"),

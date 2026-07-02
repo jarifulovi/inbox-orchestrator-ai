@@ -23,7 +23,7 @@ class TaskGenerationWorker:
             # 1. Fetch recent extracted actions and their associated emails and connected accounts
             # We do this instead of a complex NOT IN query for simplicity, filtering locally for now.
             actions_res = self.db.table("extracted_actions").select(
-                "id, email_id, verb_primitive, object_primitive, source_sentence, parsed_deadline, "
+                "id, email_id, user_id, verb_primitive, object_primitive, source_sentence, parsed_deadline, "
                 "emails(id, thread_id, body, connected_account_id, "
                 "connected_accounts(user_id))"
             ).order("extracted_at", desc=True).limit(self.LIMIT_TASK_GENERATION).execute()
@@ -76,9 +76,12 @@ class TaskGenerationWorker:
                     # but skipping avoids DB bloat. For now we just skip.
                     continue
 
-                # Parse user_id
-                connected_account = email.get("connected_accounts") or {}
-                user_id = connected_account.get("user_id")
+                # Parse user_id (with fallback for legacy records missing user_id on extracted_action)
+                user_id = action.get("user_id")
+                if not user_id:
+                    connected_account = email.get("connected_accounts") or {}
+                    user_id = connected_account.get("user_id")
+
                 if not user_id:
                     print(f"[TaskGenerationWorker] Missing user_id for action {action['id']}")
                     continue

@@ -35,6 +35,8 @@ class ExtractedActionCreate(BaseModel):
     the public.extracted_actions persistence layer.
     """
     email_id: UUID
+    user_id: UUID
+    anchor_date: Optional[datetime] = None
     verb_primitive: str
     object_primitive: Optional[str] = None
     source_sentence: str

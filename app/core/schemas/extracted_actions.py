@@ -19,8 +19,9 @@ class ExtractedActionBatchResponse(TypedDict):
 class ExtractedAction(TypedDict):
     id: NotRequired[UUID]
     extracted_at: NotRequired[datetime]
-
+    user_id: UUID
     email_id: UUID
+    anchor_date: datetime | str | None
 
     verb_primitive: str
     object_primitive: str | None
