@@ -47,33 +47,43 @@ class TaskGenerationWorker:
 
             print(f"[TaskGenerationWorker] Found {len(actions_to_process)} actions needing tasks.")
 
-            # 3. Process each action
-            new_tasks = []
+            # 3. Process actions in a single batch
+            actions_data = []
             for action in actions_to_process:
-                email = action.get("emails")
-                if not email:
-                    continue
-                
-                email_body = email.get("body", "")
-                if not email_body:
-                    continue
-
                 # Prepare the action data for the LLM prompt
                 action_data = {
+                    "id": action.get("id"),
                     "verb_primitive": action.get("verb_primitive"),
                     "object_primitive": action.get("object_primitive"),
                     "source_sentence": action.get("source_sentence"),
-                    "parsed_deadline": action.get("parsed_deadline")
+                    "anchor_date": action.get("anchor_date") or action.get("emails", {}).get("received_at") # Fallback to email received_at if available
                 }
+                actions_data.append(action_data)
+            
+            print(f"[TaskGenerationWorker] Sending {len(actions_data)} actions for batch generation.")
+            batch_blueprint = self.generation_service.generate_batch_task(actions_data)
+            
+            if not batch_blueprint or not batch_blueprint.tasks:
+                print("[TaskGenerationWorker] No tasks generated from batch.")
+                return
 
-                blueprint = self.generation_service.generate_task(action_data, email_body)
-                if not blueprint:
+            new_tasks = []
+            
+            # Create a lookup dictionary for original actions by ID
+            actions_by_id = {a["id"]: a for a in actions_to_process}
+
+            for blueprint in batch_blueprint.tasks:
+                action = actions_by_id.get(blueprint.extracted_action_id)
+                if not action:
+                    print(f"[TaskGenerationWorker] Action {blueprint.extracted_action_id} not found in source batch.")
                     continue
-                
+
                 if not blueprint.is_actionable_task:
                     print(f"[TaskGenerationWorker] LLM rejected action {action['id']} as non-actionable. Skipping.")
-                    # Optionally, you could insert it with status='dismissed' if you want to track skipped items, 
-                    # but skipping avoids DB bloat. For now we just skip.
+                    continue
+
+                email = action.get("emails")
+                if not email:
                     continue
 
                 # Parse user_id (with fallback for legacy records missing user_id on extracted_action)
@@ -86,13 +96,12 @@ class TaskGenerationWorker:
                     print(f"[TaskGenerationWorker] Missing user_id for action {action['id']}")
                     continue
 
-                # Calculate due_date
-                due_date_iso = None
-                if blueprint.due_date_days_from_now is not None:
-                    due_date = datetime.now(timezone.utc) + timedelta(days=blueprint.due_date_days_from_now)
-                    due_date_iso = due_date.isoformat()
-                elif action.get("parsed_deadline"):
-                    due_date_iso = action["parsed_deadline"]
+                # Calculate fingerprint deterministically
+                fingerprint = self.generation_service.generate_action_fingerprint(
+                    email["thread_id"], 
+                    action.get("verb_primitive", ""), 
+                    action.get("object_primitive", "")
+                )
 
                 # Build the DBTaskRow-compatible dict
                 task_row = {
@@ -104,20 +113,23 @@ class TaskGenerationWorker:
                     "title": blueprint.title,
                     "status": "pending",
                     "priority": blueprint.priority,
-                    "action_fingerprint": blueprint.action_fingerprint,
+                    "action_fingerprint": fingerprint,
                     "enriched_context": {
                         "source_sentence": action.get("source_sentence")
                     },
-                    "due_date": due_date_iso,
+                    "due_date": blueprint.due_date_iso,
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }
                 new_tasks.append(task_row)
 
-            # 4. Bulk insert the new tasks
+            # 4. Bulk upsert the new tasks efficiently
             if new_tasks:
-                self.db.table("tasks").insert(new_tasks).execute()
-                print(f"[TaskGenerationWorker] Successfully inserted {len(new_tasks)} new tasks.")
+                self.db.table("tasks") \
+                    .upsert(new_tasks, on_conflict="user_id, action_fingerprint") \
+                    .execute()
+                
+                print(f"[TaskGenerationWorker] Sent {len(new_tasks)} tasks to DB (duplicates automatically ignored).")
             else:
                 print("[TaskGenerationWorker] No tasks were successfully generated.")
 

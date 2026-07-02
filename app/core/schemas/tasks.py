@@ -69,9 +69,13 @@ class BatchThreadResolution(BaseModel):
 
 
 class ExtractedTaskBlueprint(BaseModel):
-    """The core task details extracted by Gemini from an email context."""
+    """The core task details extracted by Gemini from an action."""
+    extracted_action_id: str = Field(description="The UUID of the extracted action this task is generated for.")
     is_actionable_task: bool = Field(description="True if the extracted action represents a real, uncompleted task that a user needs to act on. False if it's informational, already done, or too vague.")
     title: str = Field(description="Actionable and clear title for the task.")
-    priority: str = Field(description="Task urgency: 'high', 'medium', or 'low'.")
-    action_fingerprint: str = Field(description="A unique 3-5 word deterministic identifier for the action type (e.g., 'invoice_payment_followup'). Standardize this across similar actions.")
-    due_date_days_from_now: Optional[int] = Field(description="Days from today this task should be due based on email context, or null.")
+    priority: str = Field(description="Task urgency: 'High', 'Medium', or 'Low'.")
+    due_date_iso: Optional[str] = Field(description="The ISO 8601 formatted due date for the task, if one can be determined. Use the provided anchor_date as the current/received date to calculate relative times (e.g. 'in 2 days').")
+
+class BatchExtractedTaskBlueprint(BaseModel):
+    """Batch response of extracted tasks."""
+    tasks: List[ExtractedTaskBlueprint]
