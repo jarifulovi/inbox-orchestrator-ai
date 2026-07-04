@@ -26,8 +26,10 @@ Here are the new incoming email replies received on this thread:
 {emails_section}
 
 Your Goal:
-Review the new email messages and determine if the user has completed or resolved the requirements for each individual Task ID. 
-Only mark a task as completed (is_completed: true) if the emails explicitly show the action has been fulfilled, replied to, or concluded. Otherwise, leave it as false.
+Review the new email messages and determine the current status of each individual Task ID. 
+If the emails explicitly show the action has been fulfilled, replied to, or concluded, mark the status as 'completed'. 
+If the user indicates the task is no longer necessary, cancelled, or irrelevant, mark it as 'dismissed'. 
+Otherwise, keep it as 'pending'.
 """
 
     def evaluate_thread_resolution(self, context: WorkerThreadContext) -> List[TaskUpdatePayload]:
@@ -51,13 +53,17 @@ Only mark a task as completed (is_completed: true) if the emails explicitly show
             if not matching_task:
                 continue
 
-            if eval_result.is_completed:
-                updated_context = matching_task.get("enriched_context", {}).copy()
+            if eval_result.status in ("completed", "dismissed"):
+                updated_context = matching_task.get("enriched_context", {})
+                if updated_context is None:
+                    updated_context = {}
+                else:
+                    updated_context = updated_context.copy()
                 updated_context["resolution_summary"] = eval_result.resolution_summary
                 
                 updates.append({
                     "id": eval_result.id,
-                    "status": "completed",
+                    "status": eval_result.status,
                     "enriched_context": updated_context
                 })
 

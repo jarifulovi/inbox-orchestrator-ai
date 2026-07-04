@@ -3,6 +3,7 @@ from app.core.db.supabase import get_supabase_client
 from app.core.services.tasks.task_resolution import TaskResolutionService
 from app.core.llm.client import LLMClient
 from app.core.schemas.tasks import WorkerThreadContext
+from app.core.services.content_compressor import ContentCompressorService
 
 
 class TaskResolutionWorker:
@@ -56,24 +57,18 @@ class TaskResolutionWorker:
                 if not new_emails:
                     continue
                 
-                # Group by fingerprint to build contexts
-                contexts_by_fingerprint = {}
-                for task in thread_tasks:
-                    fp = task["action_fingerprint"]
-                    if fp not in contexts_by_fingerprint:
-                        contexts_by_fingerprint[fp] = {
-                            "thread_id": thread_id,
-                            "action_fingerprint": fp,
-                            "pending_tasks": [],
-                            "new_email_bodies": [e["body"] for e in new_emails if e.get("body")]
-                        }
-                    contexts_by_fingerprint[fp]["pending_tasks"].append(task)
+                # Compress emails and build context for the entire thread
+                compressed_emails = [ContentCompressorService.compress_email_body(e["body"]) for e in new_emails if e.get("body")]
+                
+                context = {
+                    "thread_id": thread_id,
+                    "pending_tasks": thread_tasks,
+                    "new_email_bodies": compressed_emails
+                }
 
-                # 3. Evaluate each context
-                for fp, context in contexts_by_fingerprint.items():
-                    # context is WorkerThreadContext
-                    task_updates = self.resolution_service.evaluate_thread_resolution(context)
-                    updates_to_apply.extend(task_updates)
+                # 3. Evaluate context
+                task_updates = self.resolution_service.evaluate_thread_resolution(context)
+                updates_to_apply.extend(task_updates)
 
             # 4. Apply updates
             if updates_to_apply:

@@ -37,7 +37,6 @@ class WorkerThreadContext(TypedDict):
     Groups identical fingerprints/threads for single-batch LLM evaluation.
     """
     thread_id: str
-    action_fingerprint: str
     pending_tasks: List[TaskRow]
     new_email_bodies: List[str]  # The incoming thread responses to evaluate against
 
@@ -51,8 +50,8 @@ class TaskResolution(BaseModel):
     id: str = Field(
         description="The unique task UUID string provided in the evaluation context."
     )
-    is_completed: bool = Field(
-        description="True ONLY if the new email messages explicitly fulfill, reply to, or resolve this specific task's requirements."
+    status: str = Field(
+        description="Determine the status of this task based on the emails: 'completed' (fully resolved or fulfilled), 'dismissed' (no longer relevant or explicitly cancelled), or 'pending' (still needs action)."
     )
     resolution_summary: str = Field(
         description="A clear, concise 1-2 sentence summary explaining why this task is completed or remains pending based on the email data."
