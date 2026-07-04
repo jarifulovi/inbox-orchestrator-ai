@@ -1,9 +1,7 @@
 from typing import TypedDict, NotRequired, Any
-from uuid import UUID
 from datetime import datetime
 
-
-class ExtractedActionPrediction(TypedDict):
+class ExtractedActionPredictionRow(TypedDict):
     verb_primitive: str
     object_primitive: str | None
     source_sentence: str
@@ -12,15 +10,13 @@ class ExtractedActionPrediction(TypedDict):
 
 
 class ExtractedActionBatchResponse(TypedDict):
-    email_id: UUID
-    actions: list[ExtractedActionPrediction]
+    email_id: str
+    actions: list[ExtractedActionPredictionRow]
 
 
-class ExtractedAction(TypedDict):
-    id: NotRequired[UUID]
-    extracted_at: NotRequired[datetime]
-    user_id: UUID
-    email_id: UUID
+class ExtractedActionRow(TypedDict):
+    user_id: str
+    email_id: str
     anchor_date: datetime | str | None
 
     verb_primitive: str
@@ -28,7 +24,7 @@ class ExtractedAction(TypedDict):
 
     source_sentence: str
 
-    raw_entities: list[Any]  # JSONB array
+    raw_entities: list[Any]  # JSONB array { actors: [], intent_label: ["send", "reply"], raw_temporal_hints: [], people: [], organizations: [], quoted_text: [] }
 
     parsed_deadline: datetime | None
 

@@ -6,24 +6,22 @@ from pydantic import BaseModel, Field
 # 1. INTERNAL DATABASE & WORKER SCHEMAS (TypedDict - Zero Performance Cost)
 # =====================================================================
 
-class DBTaskRow(TypedDict):
+class TaskRow(TypedDict):
     """
     Direct 1:1 mapping of your Database Task record structure.
     Used for type safety when extracting data via repositories.
     """
-    id: str  # UUID
     extracted_action_id: str  # UUID
     email_id: str  # UUID
     thread_id: str  # UUID
     user_id: str  # UUID
     title: str
-    status: str  # e.g., 'pending', 'completed', 'dismissed'
-    priority: str
+    status: str  # 'pending', 'completed', 'resolved', 'dismissed'
+    priority: str  # 'High', 'Medium', 'Low'
+    intent_label: str  # 'schedule_meeting', 'reply_requested', 'review_document', 'provide_information', 'make_payment', 'follow_up', 'other'
     action_fingerprint: str
     enriched_context: Dict[str, Any]  # JSONB mapping
     due_date: Optional[datetime]
-    created_at: datetime
-    updated_at: datetime
 
 
 class TaskUpdatePayload(TypedDict):
@@ -40,7 +38,7 @@ class WorkerThreadContext(TypedDict):
     """
     thread_id: str
     action_fingerprint: str
-    pending_tasks: List[DBTaskRow]
+    pending_tasks: List[TaskRow]
     new_email_bodies: List[str]  # The incoming thread responses to evaluate against
 
 

@@ -1,13 +1,9 @@
 from typing import TypedDict, NotRequired
-from uuid import UUID
 from datetime import datetime
 
-
-class ConnectedAccount(TypedDict):
-    id: NotRequired[UUID]
-    connected_at: NotRequired[datetime]
-
-    user_id: UUID
+# The Main DB schema
+class ConnectedAccountRow(TypedDict):
+    user_id: str
 
     provider: str
     provider_email: str
@@ -23,7 +19,5 @@ class ConnectedAccount(TypedDict):
 
     scope: str
 
-    sync_mode: str  # sync_mode_enum
-    sync_status: str  # sync_status_enum
-
-    last_sync_at: datetime | None
+    sync_mode: str  # 'INITIAL_BACKFILL', 'BACKFILLING', 'ACTIVE'
+    sync_status: str  # 'IDLE', 'SYNCING', 'PAUSED', 'FAILED'

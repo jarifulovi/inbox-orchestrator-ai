@@ -1,19 +1,15 @@
 from typing import TypedDict, NotRequired
-from uuid import UUID
 from datetime import datetime
 
-
-class EmailThread(TypedDict):
-    id: NotRequired[UUID]
-    created_at: NotRequired[datetime]
-
+class EmailThreadRow(TypedDict):
     gmail_thread_id: str
 
-    connected_account_id: UUID
+    connected_account_id: str
 
     subject: str | None
     snippet: str | None
     summary: str | None
+    summary_generated_at: datetime | None
 
     is_processed: bool
 

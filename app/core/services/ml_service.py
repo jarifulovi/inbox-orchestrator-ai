@@ -255,8 +255,7 @@ class MLEngineService:
                 "label": label_name,
                 "confidence": classification.get("confidence", 0.0),
                 "probabilities": classification.get("probabilities", {}),
-                "model_version": CLASSIFIER_MODEL_VERSION,
-                "classified_at": datetime.now(timezone.utc).isoformat()
+                "model_version": CLASSIFIER_MODEL_VERSION
             })
 
         try:
@@ -324,8 +323,7 @@ class MLEngineService:
                     "parsed_deadline": self._safe_parse_datetime(
                         action.get("parsed_deadline")
                     ),
-                    "model_version": ACTION_EXTRACTOR_MODEL_VERSION,
-                    "extracted_at": datetime.now(timezone.utc).isoformat()
+                    "model_version": ACTION_EXTRACTOR_MODEL_VERSION
                 })
 
         if not action_rows:

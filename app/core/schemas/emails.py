@@ -1,14 +1,9 @@
 from typing import TypedDict, NotRequired, Any
-from uuid import UUID
 from datetime import datetime
 
-
-class Email(TypedDict):
-    id: NotRequired[UUID]
-    ingested_at: NotRequired[datetime]
-
-    thread_id: UUID
-    connected_account_id: UUID
+class EmailRow(TypedDict):
+    thread_id: str
+    connected_account_id: str
 
     gmail_message_id: str
 
@@ -22,10 +17,10 @@ class Email(TypedDict):
     subject: str | None
     body: str | None
     snippet: str | None
-    summary: str | None
 
     has_attachments: bool
 
     received_at: datetime
 
+    detected_entities: dict[str, Any] | None  # { people: ["name", "email"], organizations: [], urls: [], dates: [] }
     raw_payload: dict[str, Any] | None

@@ -1,9 +1,6 @@
 from typing import TypedDict, NotRequired
-from uuid import UUID
-from datetime import datetime
 
-
-class PreSecurityPrediction(TypedDict):
+class PreSecurityPredictionRow(TypedDict):
     pre_security_passed: bool
     security_risks: list[str]
     extracted_spam_score: float | None
@@ -14,22 +11,16 @@ class PreSecurityPrediction(TypedDict):
     pass1_computed_score: float
 
 
-class EmailSecurityAnalysis(TypedDict):
-    id: NotRequired[UUID]
-    analyzed_at: NotRequired[datetime]
-
-    email_id: UUID
+class EmailSecurityAnalysisRow(TypedDict):
+    email_id: str
 
     spf_pass: bool
     dkim_pass: bool
     dmarc_pass: bool
 
     is_whitelisted_sender: bool
-
-    contains_abuse: bool
-
-    is_financial_risk: bool
-
+    pre_security_passed: bool
+    security_risks: list[str]  # e.g ["abuse", "financial_risk", "scam"]
     security_trust_score: float
 
-    security_trust_level: str
+    security_trust_level: str  # 'unverified', 'suspicious', 'neutral', 'trusted'

@@ -103,9 +103,8 @@ class TaskGenerationWorker:
                     action.get("object_primitive", "")
                 )
 
-                # Build the DBTaskRow-compatible dict
+                # Build the TaskRow-compatible dict
                 task_row = {
-                    "id": str(uuid.uuid4()),
                     "extracted_action_id": action["id"],
                     "email_id": email["id"],
                     "thread_id": email["thread_id"],
@@ -113,13 +112,12 @@ class TaskGenerationWorker:
                     "title": blueprint.title,
                     "status": "pending",
                     "priority": blueprint.priority,
+                    "intent_label": "other",  # Defaulting to other, this could be from LLM
                     "action_fingerprint": fingerprint,
                     "enriched_context": {
                         "source_sentence": action.get("source_sentence")
                     },
-                    "due_date": blueprint.due_date_iso,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "updated_at": datetime.now(timezone.utc).isoformat()
+                    "due_date": blueprint.due_date_iso
                 }
                 new_tasks.append(task_row)
 
