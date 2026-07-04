@@ -23,7 +23,7 @@ class TaskGenerationWorker:
             # 1. Fetch recent extracted actions and their associated emails and connected accounts
             # We do this instead of a complex NOT IN query for simplicity, filtering locally for now.
             actions_res = self.db.table("extracted_actions").select(
-                "id, email_id, user_id, verb_primitive, object_primitive, source_sentence, parsed_deadline, "
+                "id, email_id, user_id, verb_primitive, object_primitive, source_sentence, parsed_deadline, raw_entities, "
                 "emails(id, thread_id, body, connected_account_id, "
                 "connected_accounts(user_id))"
             ).order("extracted_at", desc=True).limit(self.LIMIT_TASK_GENERATION).execute()
@@ -50,12 +50,13 @@ class TaskGenerationWorker:
             # 3. Process actions in a single batch
             actions_data = []
             for action in actions_to_process:
-                # Prepare the action data for the LLM prompt
+                # Prepare the action data for the LLM prompt (minimal fields)
                 action_data = {
                     "id": action.get("id"),
                     "verb_primitive": action.get("verb_primitive"),
                     "object_primitive": action.get("object_primitive"),
-                    "source_sentence": action.get("source_sentence"),
+                    "source_sent": action.get("source_sentence"),
+                    "raw_entities": action.get("raw_entities"),
                     "anchor_date": action.get("anchor_date") or action.get("emails", {}).get("received_at") # Fallback to email received_at if available
                 }
                 actions_data.append(action_data)
@@ -112,11 +113,8 @@ class TaskGenerationWorker:
                     "title": blueprint.title,
                     "status": "pending",
                     "priority": blueprint.priority,
-                    "intent_label": "other",  # Defaulting to other, this could be from LLM
+                    "intent_label": blueprint.intent_label,
                     "action_fingerprint": fingerprint,
-                    "enriched_context": {
-                        "source_sentence": action.get("source_sentence")
-                    },
                     "due_date": blueprint.due_date_iso
                 }
                 new_tasks.append(task_row)

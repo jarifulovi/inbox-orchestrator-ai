@@ -28,6 +28,7 @@ Extract and determine the core details for clear, actionable task blueprints for
 - Evaluate each action independently and include its corresponding `extracted_action_id` in your response.
 - Determine is_actionable_task: Evaluate if this action should actually become a task. Mark it true only if it is a concrete, uncompleted action the user must perform. Mark false if it's purely informational, overly vague, noise or already resolved.
 - Provide an actionable and clear title.
+- Determine intent_label: Categorize the action intent into one of the following: 'schedule_meeting', 'reply_requested', 'review_document', 'provide_information', 'make_payment', 'follow_up', or 'other'.
 - Determine the priority (High, Medium, Low) based on the urgency conveyed in the action text.
 - Determine due_date_iso: Extract a due date if mentioned (e.g., 'by tomorrow', 'in 2 days'). Use the provided `anchor_date` (which represents when the action was requested) as the baseline to calculate relative times. Format it as an ISO 8601 string. If no deadline is implied, return null.
 """

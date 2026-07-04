@@ -71,6 +71,7 @@ class ExtractedTaskBlueprint(BaseModel):
     extracted_action_id: str = Field(description="The UUID of the extracted action this task is generated for.")
     is_actionable_task: bool = Field(description="True if the extracted action represents a real, uncompleted task that a user needs to act on. False if it's informational, already done, or too vague.")
     title: str = Field(description="Actionable and clear title for the task.")
+    intent_label: str = Field(description="Categorize the action intent as one of the following: 'schedule_meeting', 'reply_requested', 'review_document', 'provide_information', 'make_payment', 'follow_up', or 'other'.")
     priority: str = Field(description="Task urgency: 'High', 'Medium', or 'Low'.")
     due_date_iso: Optional[str] = Field(description="The ISO 8601 formatted due date for the task, if one can be determined. Use the provided anchor_date as the current/received date to calculate relative times (e.g. 'in 2 days').")
 
