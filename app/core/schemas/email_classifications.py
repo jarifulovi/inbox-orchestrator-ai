@@ -6,6 +6,8 @@ class EmailClassificationPredictionRow(TypedDict):
     confidence: float
     probabilities: dict[str, float]
 
+EmailClassificationPrediction = EmailClassificationPredictionRow
+
 
 class EmailClassificationRow(TypedDict):
     email_id: str

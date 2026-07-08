@@ -1,13 +1,6 @@
 import unittest
 
-from app.core.models.action_extractor.components.processors import ActionPostprocessor, TextPreprocessor
-
-
-class DummyAction:
-    def __init__(self, verb_primitive, object_primitive, source_sentence):
-        self.verb_primitive = verb_primitive
-        self.object_primitive = object_primitive
-        self.source_sentence = source_sentence
+from app.core.ml_models.fact_extractor.components.processors import FactPostprocessor, TextPreprocessor
 
 
 class TextPreprocessorTests(unittest.TestCase):
@@ -27,32 +20,62 @@ class TextPreprocessorTests(unittest.TestCase):
         self.assertTrue(cleaned.lower().startswith("please"))
 
 
-class ActionPostprocessorTests(unittest.TestCase):
+class FactPostprocessorTests(unittest.TestCase):
     def test_clean_filters_casual_verbs(self):
-        actions = [
-            DummyAction("leave", "office", "Please leave the office."),
-            DummyAction("review", "draft", "Please review the draft."),
+        facts = [
+            {
+                "fact_type": "task",
+                "payload": {"action": "leave", "object": "office"},
+                "source_sentence": "Please leave the office."
+            },
+            {
+                "fact_type": "task",
+                "payload": {"action": "review", "object": "draft"},
+                "source_sentence": "Please review the draft."
+            },
         ]
 
-        cleaned = ActionPostprocessor.clean(actions)  # type: ignore[arg-type]
-        self.assertEqual(len(cleaned), 1)
-        self.assertEqual(cleaned[0].verb_primitive, "review")
+        cleaned = FactPostprocessor.process(facts)
+        # 'leave' is a casual verb and should be demoted to a regular 'fact' type rather than dropped completely,
+        # unless it is in HARD_DELETE_VERBS (which leave is not, it is in CASUAL_VERBS).
+        # Wait, let's verify what CASUAL_VERBS does in processors.py:
+        # If it is a casual verb, fact_type is demoted to "fact".
+        self.assertEqual(len(cleaned), 2)
+        # The first one should have fact_type = "fact"
+        self.assertEqual(cleaned[0]["fact_type"], "fact")
+        # The second one should have fact_type = "task"
+        self.assertEqual(cleaned[1]["fact_type"], "task")
+        self.assertEqual(cleaned[1]["payload"]["action"], "review")
 
     def test_process_filters_then_deduplicates(self):
-        actions = [
-            DummyAction("watch", "video", "Please watch the tutorial."),
-            DummyAction("review", "draft", "Please review the draft."),
-            DummyAction("review", "draft", "Please review the draft."),
+        facts = [
+            {
+                "fact_type": "task",
+                "payload": {"action": "watch", "object": "video"},
+                "source_sentence": "Please watch the tutorial."
+            },
+            {
+                "fact_type": "task",
+                "payload": {"action": "review", "object": "draft"},
+                "source_sentence": "Please review the draft."
+            },
+            {
+                "fact_type": "task",
+                "payload": {"action": "review", "object": "draft"},
+                "source_sentence": "Please review the draft."
+            },
         ]
 
-        processed = ActionPostprocessor.process(actions)  # type: ignore[arg-type]
-        self.assertEqual(len(processed), 1)
-        self.assertEqual(processed[0]["verb_primitive"], "review")
+        processed = FactPostprocessor.process(facts)
+        # 'watch' is a casual verb -> demoted to fact
+        # The two 'review' actions are duplicates, so one is deduplicated.
+        # So we should have 2 unique facts: 1 'fact' (watch) and 1 'task' (review).
+        self.assertEqual(len(processed), 2)
+        
+        types = [f["fact_type"] for f in processed]
+        self.assertIn("fact", types)
+        self.assertIn("task", types)
 
 
 if __name__ == "__main__":
     unittest.main()
-
-
-
-

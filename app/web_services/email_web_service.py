@@ -50,7 +50,7 @@ class EmailWebService:
             "recipients, cc, bcc, subject, snippet, summary, received_at, ingested_at, "
             "raw_payload->labelIds, raw_payload->payload, "
             "email_classifications(*), "
-            "extracted_actions(*), "
+            "email_facts(*), "
             "email_security_analysis(*)"
         ).eq("id", email_id).eq("account_id", account_id).single().execute()
 

@@ -1,7 +1,7 @@
 # app/models/security/post_security.py
 from typing import Any
 from app.core.schemas.email_classifications import EmailClassificationPrediction
-from app.core.schemas.extracted_actions import ExtractedActionBatchResponse
+from app.core.schemas.email_facts import EmailFactBatchResponse
 from app.core.ml_models.unified_constants import (
     INTENT_MANIFEST,
     ACTION_SECURITY_MANIFEST,
@@ -18,12 +18,12 @@ class PostSecurityValidator:
             self,
             safe_nodes: list[dict],
             classifications: list[EmailClassificationPrediction],
-            actions: list[ExtractedActionBatchResponse],
+            facts: list[EmailFactBatchResponse],
             historical_context: list[dict] | None = None
     ) -> list[dict]:
         """
         Executes Pass 2 deep behavioral context evaluation over safe data chunks.
-        Combines (Classifier + Actions) first to isolate structural threats,
+        Combines (Classifier + Facts) first to isolate structural threats,
         then evaluates historical profiles to detect anomalies.
         """
         batch_predictions: list[dict] = []
@@ -34,7 +34,7 @@ class PostSecurityValidator:
             try:
                 # Read metadata safely from prior layers using standard contract
                 classification_obj = classifications[idx]
-                action_envelope = actions[idx]
+                fact_envelope = facts[idx]
 
                 # Resolve classifier index safely; default to index 6 (work_professional) if missing
                 category_idx = classification_obj["label_id"] if classification_obj else 6
@@ -44,20 +44,20 @@ class PostSecurityValidator:
                 base_penalty = intent_config["penalty_score"]
                 is_high_risk_intent = intent_config["is_high_risk"]
 
-                # Unpack the pure list of action items extracted from the email body text
-                action_items = action_envelope.get("actions", []) if isinstance(action_envelope, dict) else []
+                # Unpack the pure list of fact items extracted from the email body text
+                fact_items = fact_envelope.get("facts", []) if isinstance(fact_envelope, dict) else []
 
                 # Dynamic arrays updated by downstream placeholder verification loops
                 detected_risks: list[str] = []
                 is_anomaly = False
 
                 # =====================================================================
-                # STEP A: COMBINE CLASSIFIER + ACTION EXTRACTOR (In-Message Evaluation)
+                # STEP A: COMBINE CLASSIFIER + FACT EXTRACTOR (In-Message Evaluation)
                 # =====================================================================
                 has_structural_risk = self._evaluate_in_message_risk_profile(
                     category_idx=category_idx,
                     is_high_risk_intent=is_high_risk_intent,
-                    action_items=action_items,
+                    fact_items=fact_items,
                     detected_risks=detected_risks
                 )
 
@@ -78,7 +78,7 @@ class PostSecurityValidator:
                     is_anomaly = self._evaluate_historical_behavioral_shift(
                         sender=sender_address,
                         category_idx=category_idx,
-                        action_items=action_items,
+                        fact_items=fact_items,
                         history=context_pool,
                         detected_risks=detected_risks
                     )
@@ -126,7 +126,7 @@ class PostSecurityValidator:
         return batch_predictions
 
     def _evaluate_in_message_risk_profile(
-            self, category_idx: int, is_high_risk_intent: bool, action_items: list[dict], detected_risks: list[str]
+            self, category_idx: int, is_high_risk_intent: bool, fact_items: list[dict], detected_risks: list[str]
     ) -> bool:
         """
         Stage 1: Checks for multi-model risks by identifying if a highly targeted
@@ -136,9 +136,13 @@ class PostSecurityValidator:
         high_concern_verbs = ACTION_SECURITY_MANIFEST["high_concern_verbs"]
         high_risk_verbs = ACTION_SECURITY_MANIFEST["high_risk_verbs"]
 
-        # Loop over verbs extracted from your upstream action model
-        for action in action_items:
-            verb = action.get("verb_primitive", "").lower()
+        # Loop over verbs extracted from your upstream action model (only task/commitment facts)
+        for fact in fact_items:
+            if fact.get("fact_type") not in {"task", "commitment"}:
+                continue
+
+            payload = fact.get("payload") or {}
+            verb = payload.get("action", "").lower()
 
             # Intersection 1: Financial Label + Sensitive Request Actions
             if category_idx == 1 and (verb in high_concern_verbs):
@@ -157,13 +161,13 @@ class PostSecurityValidator:
                 return True
 
         # Fallback check for structural isolation
-        if is_high_risk_intent and len(action_items) > 0:
+        if is_high_risk_intent and len(fact_items) > 0:
             return True
 
         return False
 
     def _evaluate_historical_behavioral_shift(
-            self, sender: str, category_idx: int, action_items: list[dict], history: list[dict],
+            self, sender: str, category_idx: int, fact_items: list[dict], history: list[dict],
             detected_risks: list[str]
     ) -> bool:
         """

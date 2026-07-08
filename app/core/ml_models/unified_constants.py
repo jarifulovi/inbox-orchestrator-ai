@@ -2,8 +2,8 @@
 
 CLASSIFIER_MODEL_NAME = "intent_classifier"
 CLASSIFIER_MODEL_VERSION = "v1.0"
-ACTION_EXTRACTOR_MODEL_NAME = "action_extractor"
-ACTION_EXTRACTOR_MODEL_VERSION = "v1.0"
+FACT_EXTRACTOR_MODEL_NAME = "fact_extractor"
+FACT_EXTRACTOR_MODEL_VERSION = "fact_extractor_v1"
 
 # =====================================================================
 # 1. INTENT CLASSIFIER MANIFEST (Index-Locked Single Source of Truth)

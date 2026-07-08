@@ -10,6 +10,8 @@ class PreSecurityPredictionRow(TypedDict):
     raw_dkim_result: str | None
     pass1_computed_score: float
 
+PreSecurityPrediction = PreSecurityPredictionRow
+
 
 class EmailSecurityAnalysisRow(TypedDict):
     email_id: str

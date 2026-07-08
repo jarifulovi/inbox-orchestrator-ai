@@ -50,6 +50,10 @@ class ActionDetector:
             if child.dep_ == "aux" and child.lemma_.lower() == "have":
                 if any(c.text.lower() == "to" for c in verb.children):
                     return True
+            if child.dep_ == "aux" and child.lemma_.lower() in {"will", "shall"}:
+                # If future tense is used with first-person subject (I/we), it represents a commitment.
+                if any(c.dep_ == "nsubj" and c.text.lower() in {"i", "we"} for c in verb.children):
+                    return True
 
         # Catch open clausal structures driven by matrix prompts ("Remember to renew")
         if verb.dep_ in {"xcomp", "ccomp"}:

@@ -1,18 +1,15 @@
 import html
 import re
 import unicodedata
-from typing import List
-
-from app.core.schemas.extracted_actions import ExtractedActionPrediction
+from typing import List, Dict, Any
 
 try:
     import contractions as contractions_lib
-except ImportError:  # pragma: no cover - graceful fallback if dependency is unavailable
+except ImportError:
     contractions_lib = None
 
 
 class TextPreprocessor:
-    # Stage 1: Structural email cleanup. Keep this focused on format/noise only.
     STRUCTURAL_REMOVALS = (
         r"(?im)^\s*(from|sent|to|cc|bcc|subject|date)\s*:\s*.*$",
         r"(?im)^\s*on .+wrote:\s*$",
@@ -20,7 +17,6 @@ class TextPreprocessor:
         r"(?im)^\s*[-*_~=]{3,}\s*$",
     )
 
-    # Stage 3: Syntactic normalization for downstream rule-based extraction.
     SYNTACTIC_CLEANERS = (
         (r"\bmake sure you\b", "please"),
         (r"\bmake sure to\b", "please"),
@@ -99,7 +95,6 @@ class TextPreprocessor:
 
     @classmethod
     def _structural_clean(cls, text: str) -> str:
-        """Stage 1: remove formatting, quoted headers, and common email noise."""
         if text is None:
             return ""
 
@@ -124,7 +119,6 @@ class TextPreprocessor:
 
     @classmethod
     def _expand_contractions(cls, text: str) -> str:
-        """Stage 2: expand contractions using the dedicated library, with a safe fallback."""
         if not text:
             return ""
 
@@ -139,7 +133,6 @@ class TextPreprocessor:
 
     @classmethod
     def _normalize_syntax(cls, text: str) -> str:
-        """Stage 3: reshape conversational phrasing into more uniform action language."""
         if not text:
             return ""
 
@@ -153,44 +146,26 @@ class TextPreprocessor:
 
     @classmethod
     def clean(cls, text: str) -> str:
-        """
-        End-to-end preprocessing:
-        1. Structural cleaning
-        2. Contraction expansion
-        3. Syntactic normalization
-        """
         cleaned = cls._structural_clean(text)
         cleaned = cls._expand_contractions(cleaned)
         cleaned = cls._normalize_syntax(cleaned)
         return cleaned
 
 
-class ActionPostprocessor:
+class FactPostprocessor:
     ALLOWED_ACTION_VERBS = {
         "verify", "review", "submit", "update", "approve", "confirm",
         "check", "send", "sign", "complete", "schedule", "track"
     }
     HARD_DELETE_VERBS = {
-        # Original structural/helper verbs
         "let", "shall",
-        # Cognitive/Epistemic frames (Mental actions, not operational tasks)
         "think", "hope", "believe", "guess", "assume", "suppose", "wonder", "feel",
-        # Conversational / Discourse markers (Polite background text)
         "mean", "say", "tell", "mention", "hear", "apologize", "thank", "appreciate",
-        # Stative / Aspective descriptors (States of being or status)
         "seem", "look", "appear", "stay", "remain", "happen", "exist",
-        # Permissive / Volitional shells
         "allow", "permit", "wish", "intend"
     }
-    # Verbs that are casual and not necessarily high-value tasks
     CASUAL_VERBS = {
-        "read",
-        "leave",
-        "watch",
-        "play",
-        "eat",
-        "go",
-        "view",
+        "read", "leave", "watch", "play", "eat", "go", "view",
     }
     HIGH_VALUE_OBJECT_CUES = {
         "contract", "proposal", "report", "article", "presentation", "doc", "file", "email", "ticket",
@@ -205,39 +180,26 @@ class ActionPostprocessor:
         return value
 
     @classmethod
-    def _is_casual_action(cls, action: "ExtractedActionPrediction") -> bool:
-        """Evaluates whether an action is noise or conversational email pleasantry."""
-        if not action:
-            return False
-
-        verb = action["verb_primitive"]
-        if not verb:
+    def _is_casual_action(cls, action_verb: str, object_prim: str | None) -> bool:
+        if not action_verb:
             return True
 
-        # Gate 1: Enforce the Hard Delete Shield
-        if verb in cls.HARD_DELETE_VERBS:
+        if action_verb in cls.HARD_DELETE_VERBS:
             return True
 
-        # Gate 2: Enforce the Allowed Operational Verb Gateway
-        if verb not in cls.ALLOWED_ACTION_VERBS:
-            # Only drop verbs that are explicitly marked casual; unknown verbs pass through
-            if verb not in cls.CASUAL_VERBS:
+        if action_verb not in cls.ALLOWED_ACTION_VERBS:
+            if action_verb not in cls.CASUAL_VERBS:
                 return False
 
-        # Gate 3: Casual Context Boundary Checks
-        if verb in cls.CASUAL_VERBS or verb not in cls.ALLOWED_ACTION_VERBS:
-            # Contextual Override: Save task if high-value corporate cues exist in the sanitized object string
-            obj = action["object_primitive"]
-            if obj and any(cue in obj for cue in cls.HIGH_VALUE_OBJECT_CUES):
-                return False  # Saved by the high-value object cue!
-
-            return True  # Confirmed casual noise
+        if action_verb in cls.CASUAL_VERBS or action_verb not in cls.ALLOWED_ACTION_VERBS:
+            if object_prim and any(cue in object_prim for cue in cls.HIGH_VALUE_OBJECT_CUES):
+                return False
+            return True
 
         return False
 
     @staticmethod
     def _sanitize_object_clause(obj_value: str | None) -> str:
-        """Removes trailing dependent clauses and temporal noise from the core noun."""
         if not obj_value:
             return ""
 
@@ -247,51 +209,59 @@ class ActionPostprocessor:
         split_parts = re.split(clean_pattern, obj_str, flags=re.IGNORECASE)
         return split_parts[0].strip() if split_parts else obj_str
 
-    @staticmethod
-    def _deduplicate_actions(actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:
-        seen_tasks = set()
-        deduplicated = []
-
-        for action in actions:
-            task_signature = (
-                action.get("verb_primitive", ""),
-                action.get("object_primitive", ""),
-                action.get("source_sentence", ""),
-            )
-            if task_signature not in seen_tasks:
-                seen_tasks.add(task_signature)
-                deduplicated.append(action)
-
-        return deduplicated
-
     @classmethod
-    def clean_and_sanitize(cls, actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:
-        """Filters out conversational low-value actions and trims trailing grammatical text."""
-        if not actions:
+    def process(cls, facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Deduplicates facts and sanitizes task/commitment payloads.
+        """
+        if not facts:
             return []
 
-        processed_actions: List["ExtractedActionPrediction"] = []
+        processed_facts = []
+        seen_signatures = set()
 
-        for action in actions:
-            # 1. NORMALIZE ONCE: Clean up formatting right at the entryway
-            action["verb_primitive"] = cls._normalize_signature_value(action.get("verb_primitive", ""))
-            action["object_primitive"] = cls._normalize_signature_value(action.get("object_primitive", ""))
-            action["source_sentence"] = cls._normalize_signature_value(action.get("source_sentence", ""))
+        for fact in facts:
+            fact_type = fact.get("fact_type", "fact")
+            payload = fact.get("payload", {})
+            source_sentence = cls._normalize_signature_value(fact.get("source_sentence", ""))
 
-            # 2. SANITIZE TARGET OBJECTS FIRST: Clean noun clauses BEFORE checking context cues
-            if action["object_primitive"]:
-                action["object_primitive"] = cls._sanitize_object_clause(action["object_primitive"])
+            # Sanitize and check tasks and commitments
+            if fact_type in {"task", "commitment"}:
+                action_verb = cls._normalize_signature_value(payload.get("action", ""))
+                object_prim = cls._normalize_signature_value(payload.get("object", ""))
+                
+                # Sanitize target object
+                if object_prim:
+                    object_prim = cls._sanitize_object_clause(object_prim)
+                
+                # Check for casual actions/noise
+                if cls._is_casual_action(action_verb, object_prim):
+                    # Demote to a generic fact or drop if completely noisy
+                    if action_verb in cls.HARD_DELETE_VERBS:
+                        continue  # Skip hard deletes entirely
+                    fact_type = "fact"
+                    payload["action"] = action_verb
+                    payload["object"] = object_prim
+                else:
+                    payload["action"] = action_verb
+                    payload["object"] = object_prim
 
-            # 3. FILTER GATEWAY: Evaluate structured text boundaries and allowlists
-            if cls._is_casual_action(action):
-                continue
+            fact["fact_type"] = fact_type
+            fact["source_sentence"] = source_sentence
+            
+            # Normalize other strings
+            fact["model_version"] = str(fact.get("model_version", ""))
 
-            processed_actions.append(action)
+            # Deduplication key
+            signature = (
+                fact_type,
+                payload.get("action", ""),
+                payload.get("object", ""),
+                source_sentence
+            )
 
-        return processed_actions
+            if signature not in seen_signatures:
+                seen_signatures.add(signature)
+                processed_facts.append(fact)
 
-    @classmethod
-    def process(cls, actions: List["ExtractedActionPrediction"]) -> List["ExtractedActionPrediction"]:
-        """End-to-end postprocessing pipeline."""
-        cleaned_actions = cls.clean_and_sanitize(actions)
-        return cls._deduplicate_actions(cleaned_actions)
+        return processed_facts

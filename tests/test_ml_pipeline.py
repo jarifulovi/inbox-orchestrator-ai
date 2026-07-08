@@ -7,7 +7,7 @@ from uuid import UUID
 
 # Import your core orchestrator engine
 from app.core.services.ml_service import MLEngineService
-import app.core.models.action_extractor.spacy_engine
+import app.core.ml_models.fact_extractor.spacy_engine
 
 
 def run_pipeline_integration_test(email_limit: int = 2):
@@ -133,23 +133,23 @@ def test_single_text_payload():
     mock_email_nodes = [
         {
             "id": "550e8400-e29b-41d4-a716-446655440000",
-            "subject": "Urgent: Project Sync and Contract Review",
+            "subject": "Urgent: Action Items for Q3 Project Launch & Deliverables",
             "raw_payload": {
                 "headers": {
-                    "Subject": "Urgent: Project Sync and Contract Review"
+                    "Subject": "Urgent: Action Items for Q3 Project Launch & Deliverables"
                 }
             },
             "body": (
-                "Hi team, let's look at the quarterly targets.\n"
+                "Hi team,\n"
                 "++++\n"  # Test case 1: Plus line
-                "Please confirm your availability for our technical sync tomorrow morning.\n"
-                "I need you to verify the deployment metrics before we hop on the call.\n\n"
+                "We need to finalize the project documentation before our client sync. "
+                "Please review the marketing budget spreadsheet by Friday afternoon so we can submit the funding request.\n"
                 "****\n"  # Test case 2: Asterisk line
-                "Review the updated contract framework on our shared portal: "
+                "Also, John needs to schedule the database migration window for this weekend, and make sure to email the credentials to the engineering team."
                 "[https://internal-workspace.supabase.co/projects/v1/review?token=f69c0d987a545032aacf9b5b425e5892d7488c14f680f4952c4cad4d&redirect_to=dashboard](https://internal-workspace.supabase.co/projects/v1/review?token=f69c0d987a545032aacf9b5b425e5892d7488c14f680f4952c4cad4d&redirect_to=dashboard)\n\n"
                 "---------------------\n"  # Test case 3: Dash line
                 "Thanks,\n"
-                "Operations Management"
+                "Project Lead"
             )
         }
     ]
@@ -186,7 +186,7 @@ def test_single_text_payload():
         print("\n[Pass 2a: Intent Classification Output]")
         print(json.dumps(to_serializable_dict(payload.get("classification")), indent=4))
 
-        print("\n[Pass 2b: Action Extractor Placeholder]")
+        print("\n[Pass 2b: Fact Extractor Output]")
         print(json.dumps(to_serializable_dict(payload.get("actions")), indent=4))
 
         print("\n[Pass 2c: Structural Security Rules Metric]")
@@ -195,8 +195,4 @@ def test_single_text_payload():
 
 if __name__ == "__main__":
     # run_pipeline_integration_test()
-    classifierPreProc = EmailPreprocessor()
-    text = "Confirm your email address.\nFollow the link below to confirm this email address and finish signing up.\n\nConfirm email address: [https://qyjwniizxidrfrzjxguq.supabase.co/auth/v1/verify?token=f69c0d987a545032aacf9b5b425e5892d7488c14f680f4952c4cad4d&type=signup&redirect_to=http://localhost:3000/](https://qyjwniizxidrfrzjxguq.supabase.co/auth/v1/verify?token=f69c0d987a545032aacf9b5b425e5892d7488c14f680f4952c4cad4d&type=signup&redirect_to=http://localhost:3000/)\n\nYou are receiving this email because you signed up for an application powered by Supabase."
-    cleaned_text = classifierPreProc.preprocess(text)
-    print("cleaned text after pre proc: ",cleaned_text)
     test_single_text_payload()
