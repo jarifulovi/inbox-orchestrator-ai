@@ -20,6 +20,17 @@ CLASSIFIER_LABELS = {idx: meta["label"] for idx, meta in INTENT_MANIFEST.items()
 HIGH_RISK_INTENT_INDICES = [idx for idx, meta in INTENT_MANIFEST.items() if meta["is_high_risk"]]
 ACTIONABLE_INTENT_LABELS = {meta["label"] for idx, meta in INTENT_MANIFEST.items() if meta["is_actionable"]}
 
+# Default intent classification fallback values
+DEFAULT_INTENT_LABEL_ID = 1
+DEFAULT_INTENT_LABEL = "others"
+
+# Gmail raw category / label identifiers for noise/spam emails
+GMAIL_NOISE_LABELS = {
+    "CATEGORY_PROMOTIONS", "CATEGORY_PROMOTION",
+    "CATEGORY_SOCIAL", "CATEGORY_FORUMS", "CATEGORY_FORUM",
+    "SPAM", "CATEGORY_SPAM"
+}
+
 # =====================================================================
 # 2. ACTION LINGUISTIC PRIMITIVES MANIFEST (Extensible Security Flags)
 # =====================================================================

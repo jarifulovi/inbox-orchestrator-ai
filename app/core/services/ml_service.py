@@ -9,8 +9,15 @@ from app.core.ml_models.classifier.predictor import EmailClassifier
 from app.core.ml_models.security import PostSecurityValidator
 from app.core.ml_models.security.pre_security import PreSecurityFilter
 from app.core.schemas.email_facts import EmailFactBatchResponse
-from app.core.ml_models.unified_constants import ACTIONABLE_INTENT_LABELS, CLASSIFIER_LABELS, CLASSIFIER_MODEL_VERSION, \
-    FACT_EXTRACTOR_MODEL_VERSION
+from app.core.ml_models.unified_constants import (
+    ACTIONABLE_INTENT_LABELS,
+    CLASSIFIER_LABELS,
+    CLASSIFIER_MODEL_VERSION,
+    FACT_EXTRACTOR_MODEL_VERSION,
+    GMAIL_NOISE_LABELS,
+    DEFAULT_INTENT_LABEL_ID,
+    DEFAULT_INTENT_LABEL
+)
 
 
 class MLEngineService:
@@ -150,20 +157,12 @@ class MLEngineService:
             label_ids = payload.get("labelIds") or []
 
             # Check if Gmail flagged it as Promotions, Social, Forums, or SPAM
-            is_noise = False
-            for lid in label_ids:
-                if lid in {
-                    "CATEGORY_PROMOTIONS", "CATEGORY_PROMOTION",
-                    "CATEGORY_SOCIAL", "CATEGORY_FORUMS", "CATEGORY_FORUM",
-                    "SPAM", "CATEGORY_SPAM"
-                }:
-                    is_noise = True
-                    break
+            is_noise = any(lid in GMAIL_NOISE_LABELS for lid in label_ids)
 
             if is_noise:
                 prediction = EmailClassificationPrediction(
-                    label_id=1,  # others index
-                    label="others",
+                    label_id=DEFAULT_INTENT_LABEL_ID,
+                    label=DEFAULT_INTENT_LABEL,
                     confidence=1.0,
                     probabilities={
                         "financial": 0.0,
