@@ -15,11 +15,10 @@ class MLRecoveryWorker:
         print("\n[ML RECOVERY] Checking for emails missing ML analysis...")
 
         try:
-            # 1. Fetch raw emails that lack matching email_classifications
-            # We select email fields and left-join email_classifications, filtering for null
+            # 1. Fetch raw emails that lack category (meaning category is null)
             response = self.supabase.table("emails") \
-                .select("*, connected_accounts(user_id), email_classifications(id)") \
-                .is_("email_classifications.id", "null") \
+                .select("*, connected_accounts(user_id)") \
+                .is_("category", "null") \
                 .order("received_at", desc=True) \
                 .limit(self.BATCH_SIZE) \
                 .execute()

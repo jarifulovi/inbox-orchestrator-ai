@@ -22,5 +22,8 @@ class EmailRow(TypedDict):
 
     received_at: datetime
 
+    category: str | None  # email classification category from classifier model or gmail
+    ai_metadata: dict[str, Any] | None # metadata for each models(classifier+fact ext+security and their statuses)
+
     detected_entities: dict[str, Any] | None  # { people: ["name", "email"], organizations: [], urls: [], dates: [] }
     raw_payload: dict[str, Any] | None

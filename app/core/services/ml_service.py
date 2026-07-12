@@ -102,6 +102,15 @@ class MLEngineService:
                 if not p2_result.get("context_records_evaluated"):
                     p2_result["context_records_evaluated"] = len(historical_context) if historical_context else 0
 
+                p1_pred = pre_sec_predictions[original_idx]
+                p2_result["pre_security_passed"] = p1_pred.get("pre_security_passed")
+                p2_result["security_risks"] = p1_pred.get("security_risks")
+                p2_result["extracted_spam_score"] = p1_pred.get("extracted_spam_score")
+                p2_result["has_reply_to_mismatch"] = p1_pred.get("has_reply_to_mismatch")
+                p2_result["is_possible_prompt_injection"] = p1_pred.get("is_possible_prompt_injection")
+                p2_result["raw_spf_result"] = p1_pred.get("raw_spf_result")
+                p2_result["raw_dkim_result"] = p1_pred.get("raw_dkim_result")
+
                 final_security[original_idx] = p2_result
 
         # Handle items that failed Pass 1 Pre-Security Rules (Forced Quarantine Mapping)
@@ -173,6 +182,13 @@ class MLEngineService:
 
         # 3. Matches PostSecurityValidator response contract shapes
         final_security[idx] = {
+            "pre_security_passed": pred.get("pre_security_passed", False),
+            "security_risks": pred.get("security_risks", []),
+            "extracted_spam_score": pred.get("extracted_spam_score"),
+            "has_reply_to_mismatch": pred.get("has_reply_to_mismatch", False),
+            "is_possible_prompt_injection": pred.get("is_possible_prompt_injection", False),
+            "raw_spf_result": pred.get("raw_spf_result"),
+            "raw_dkim_result": pred.get("raw_dkim_result"),
             "security_trust_score": float(round(pred["pass1_computed_score"], 2)) if "pass1_computed_score" in pred else 0.00,
             "security_trust_level": "suspicious",
             "is_phishing_anomaly": True,
@@ -191,27 +207,39 @@ class MLEngineService:
         Orchestrates all ML persistence operations.
         """
         await asyncio.gather(
-            self._persist_classifications(db_client, email_records, ml_batch_outputs),
+            self._persist_email_metadata_and_category(db_client, email_records, ml_batch_outputs),
             self._persist_email_facts(db_client, email_records, ml_batch_outputs)
         )
 
-    async def _persist_classifications(
+    async def _persist_email_metadata_and_category(
             self,
             db_client,
             email_records: list[dict],
             ml_batch_outputs: list[dict]
     ):
         """
-        Persists classification outputs into email_classifications table.
+        Persists classification category and structured ai_metadata directly to emails table.
         """
         if not email_records or not ml_batch_outputs:
             return
 
-        classification_rows = []
+        async def _update_single_email(email_id: str, category_name: str, metadata: dict):
+            try:
+                db_client.table("emails").update({
+                    "category": category_name,
+                    "ai_metadata": metadata
+                }).eq("id", email_id).execute()
+            except Exception as e:
+                print(f"[ML ERROR] Failed to update email {email_id} category/metadata: {str(e)}")
+
+        update_tasks = []
         for email, ml in zip(email_records, ml_batch_outputs):
             classification = ml.get("classification", {})
-            label_id = classification.get("label_id")
+            security = ml.get("security", {})
+            status = ml.get("status", "APPROVED")
+
             label_name = classification.get("label")
+            label_id = classification.get("label_id")
 
             # Fallback block just in case something comes up completely blank
             if label_id is None:
@@ -219,25 +247,44 @@ class MLEngineService:
                 label_id = -1
                 label_name = label_name or "UNCATEGORIZED"
 
-            classification_rows.append({
-                "email_id": email["id"],
-                "label_id": label_id,
-                "label": label_name,
-                "confidence": classification.get("confidence", 0.0),
-                "probabilities": classification.get("probabilities", {}),
-                "model_version": CLASSIFIER_MODEL_VERSION
-            })
+            # Check if this email went to quarantine / failed pre-security
+            is_quarantined = (status == "QUARANTINED_PRE_SECURITY")
 
-        try:
-            db_client.table("email_classifications").upsert(
-                classification_rows,
-                on_conflict="email_id"
-            ).execute()
+            # Build structured ai_metadata
+            ai_metadata = {
+                "classifier": {
+                    "is_proc": True,
+                    "label_id": label_id,
+                    "confidence": classification.get("confidence", 0.0),
+                    "probabilities": classification.get("probabilities", {}),
+                    "model_version": CLASSIFIER_MODEL_VERSION
+                },
+                "fact_extraction": {
+                    "is_proc": not is_quarantined
+                },
+                "security_analysis": {
+                    "is_proc": True,
+                    "pre_security_passed": security.get("pre_security_passed", True),
+                    "security_risks": security.get("security_risks", []),
+                    "extracted_spam_score": security.get("extracted_spam_score"),
+                    "has_reply_to_mismatch": security.get("has_reply_to_mismatch", False),
+                    "is_possible_prompt_injection": security.get("is_possible_prompt_injection", False),
+                    "raw_spf_result": security.get("raw_spf_result"),
+                    "raw_dkim_result": security.get("raw_dkim_result"),
+                    "security_trust_score": security.get("security_trust_score", 0.0),
+                    "security_trust_level": security.get("security_trust_level", "unverified"),
+                    "is_phishing_anomaly": security.get("is_phishing_anomaly", False),
+                    "risks_detected": security.get("risks_detected", [])
+                }
+            }
 
-            print(f"[ML SUCCESS] Stored {len(classification_rows)} classifications")
+            update_tasks.append(
+                _update_single_email(email["id"], label_name, ai_metadata)
+            )
 
-        except Exception as e:
-            print(f"[ML ERROR] Classification insert failed: {str(e)}")
+        if update_tasks:
+            await asyncio.gather(*update_tasks)
+            print(f"[ML SUCCESS] Processed category and metadata for {len(update_tasks)} emails")
 
 
     async def _persist_email_facts(
@@ -271,6 +318,9 @@ class MLEngineService:
 
             # Resolve user_id, connected_account_id, and anchor_date
             user_id = email.get("user_id")
+            if not user_id and "connected_accounts" in email:
+                connected_account = email.get("connected_accounts") or {}
+                user_id = connected_account.get("user_id")
             connected_account_id = email.get("connected_account_id")
             anchor_date = self._safe_parse_datetime(email.get("received_at"))
 
