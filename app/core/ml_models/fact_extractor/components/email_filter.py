@@ -5,14 +5,17 @@ class EmailFilter:
     # If a category is not present, all fact types are allowed by default.
     CATEGORY_FACT_POLICIES = {
         "spam": [],  # Block-all approach: completely bypasses extraction
-        "work/prof": ["task", "commitment", "decision", "question", "fact"],  # Full extraction allowed
+        "work_professional": ["task", "commitment", "decision", "question", "fact"],  # Full extraction allowed
         "financial": ["task", "commitment", "decision", "question", "fact"],  # Full extraction allowed
-        "system/service": ["task", "decision", "question"],  # Only actionable tasks, decisions, questions
+        "system_automated": ["task", "decision", "question"],  # Only actionable tasks, decisions, questions
         "others": ["question", "decision"],  # Selective approach: ignore casual/noise tasks and commitments
     }
 
     @classmethod
-    def should_bypass_extraction(cls, category: str | None) -> bool:
+    def should_bypass_extraction(cls, category: str | None, label_ids: List[str] | None = None) -> bool:
+        # If Gmail labels explicitly flag this email as spam, bypass extraction immediately
+        if label_ids and any(lid in label_ids for lid in {"SPAM", "CATEGORY_SPAM"}):
+            return True
         if not category:
             return False
         # If the allowed list for the category is empty, we completely bypass extraction.

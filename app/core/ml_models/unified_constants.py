@@ -9,13 +9,10 @@ FACT_EXTRACTOR_MODEL_VERSION = "fact_extractor_v1"
 # 1. INTENT CLASSIFIER MANIFEST (Index-Locked Single Source of Truth)
 # =====================================================================
 INTENT_MANIFEST = {
-    0: {"label": "content_subscription", "penalty_score": 0.3, "is_high_risk": False, "is_actionable": False},
-    1: {"label": "financial", "penalty_score": 0.9, "is_high_risk": True, "is_actionable": True},
-    2: {"label": "personal", "penalty_score": 0.1, "is_high_risk": False, "is_actionable": True},
-    3: {"label": "promotional", "penalty_score": 0.5, "is_high_risk": True, "is_actionable": False},
-    4: {"label": "spam", "penalty_score": 0.4, "is_high_risk": False, "is_actionable": False},
-    5: {"label": "system_automated", "penalty_score": 0.7, "is_high_risk": True, "is_actionable": True},
-    6: {"label": "work_professional", "penalty_score": 0.1, "is_high_risk": False, "is_actionable": True},
+    0: {"label": "financial", "penalty_score": 0.9, "is_high_risk": True, "is_actionable": True},
+    1: {"label": "others", "penalty_score": 0.3, "is_high_risk": False, "is_actionable": False},
+    2: {"label": "system_automated", "penalty_score": 0.7, "is_high_risk": True, "is_actionable": True},
+    3: {"label": "work_professional", "penalty_score": 0.1, "is_high_risk": False, "is_actionable": True},
 }
 
 # Derived Utilities for Classifier Internal Mapping (Maintains O(1) Compatibility)

@@ -35,7 +35,9 @@ class FactExtractor:
         # 1. Email Filter Layer: Pre-filtering bypassed category emails
         for i, node in enumerate(safe_nodes):
             category = node.get("category")
-            if EmailFilter.should_bypass_extraction(category):
+            payload = node.get("raw_payload") or {}
+            label_ids = payload.get("labelIds") or []
+            if EmailFilter.should_bypass_extraction(category, label_ids):
                 bypassed_indices[i] = []
             else:
                 non_bypassed_nodes.append((i, node))

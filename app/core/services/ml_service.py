@@ -82,7 +82,7 @@ class MLEngineService:
             safe_nodes = [email_nodes[i] for i in safe_indices]
 
             # A. Core Intent Category Inference
-            predictions = self.classifier_engine.predict(safe_nodes)
+            predictions = self._predict_intent_with_gmail_shortcuts(safe_nodes)
 
             # B. Fact Extractor Pipeline (Run for all safe nodes to build full intelligence profile)
             extracted_facts = self._extract_facts_selectively(safe_nodes, predictions)
@@ -137,6 +137,53 @@ class MLEngineService:
             }
             for i in range(len(email_nodes))
         ]
+
+    def _predict_intent_with_gmail_shortcuts(self, safe_nodes: list[dict]) -> list[Any]:
+        from app.schemas.email_classification import EmailClassificationPrediction
+
+        predictions = []
+        to_classify_indices = []
+        to_classify_nodes = []
+
+        for idx, node in enumerate(safe_nodes):
+            payload = node.get("raw_payload") or {}
+            label_ids = payload.get("labelIds") or []
+
+            # Check if Gmail flagged it as Promotions, Social, Forums, or SPAM
+            is_noise = False
+            for lid in label_ids:
+                if lid in {
+                    "CATEGORY_PROMOTIONS", "CATEGORY_PROMOTION",
+                    "CATEGORY_SOCIAL", "CATEGORY_FORUMS", "CATEGORY_FORUM",
+                    "SPAM", "CATEGORY_SPAM"
+                }:
+                    is_noise = True
+                    break
+
+            if is_noise:
+                prediction = EmailClassificationPrediction(
+                    label_id=1,  # others index
+                    label="others",
+                    confidence=1.0,
+                    probabilities={
+                        "financial": 0.0,
+                        "others": 1.0,
+                        "system_automated": 0.0,
+                        "work_professional": 0.0
+                    }
+                )
+                predictions.append(prediction)
+            else:
+                to_classify_indices.append(idx)
+                to_classify_nodes.append(node)
+                predictions.append(None)
+
+        if to_classify_nodes:
+            model_preds = self.classifier_engine.predict(to_classify_nodes)
+            for m_idx, original_idx in enumerate(to_classify_indices):
+                predictions[original_idx] = model_preds[m_idx]
+
+        return predictions
 
     def _extract_facts_selectively(
             self,

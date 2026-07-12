@@ -36,8 +36,8 @@ class PostSecurityValidator:
                 classification_obj = classifications[idx]
                 fact_envelope = facts[idx]
 
-                # Resolve classifier index safely; default to index 6 (work_professional) if missing
-                category_idx = classification_obj["label_id"] if classification_obj else 6
+                # Resolve classifier index safely; default to index 1 (others) if missing
+                category_idx = classification_obj["label_id"] if classification_obj else 1
 
                 # Extract configuration parameters dynamically from your locked INTENT_MANIFEST
                 intent_config = INTENT_MANIFEST.get(category_idx, {"penalty_score": 0.1, "is_high_risk": False})

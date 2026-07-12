@@ -10,19 +10,16 @@ from typing import Dict, Optional, List
 from app.core.schemas.email_classifications import EmailClassificationPrediction
 
 ARTIFACTS = [
-    ("best_model_fold_1_best", 1),
-    ("best_model_fold_4_better", 1),
-    ("best_model_fold_3_stable", 1),
+    ("best_model_fold_2_best", 1),
+    ("best_model_fold_5_better", 1),
+    ("best_model_fold_4_stable", 1),
 ]
 
 LABELS = {
-    0: "content_subscription",
-    1: "financial",
-    2: "personal",
-    3: "promotional",
-    4: "spam",
-    5: "system_automated",
-    6: "work_professional"
+    0: "financial",
+    1: "others",
+    2: "system_automated",
+    3: "work_professional"
 }
 
 BASE_PATH = Path(__file__).parent
