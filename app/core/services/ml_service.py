@@ -193,6 +193,13 @@ class MLEngineService:
         Runs FactExtractor on safe nodes. If we want selective checks, we can filter,
         but for facts we extract them on all safe nodes.
         """
+        # Assign category from prediction to safe_nodes so fact extractor filter can read it
+        for node, pred in zip(safe_nodes, predictions):
+            if isinstance(pred, dict):
+                node["category"] = pred.get("label")
+            elif pred is not None:
+                node["category"] = getattr(pred, "label", None)
+
         # Run FactExtractor pipeline on all safe nodes
         return self.fact_extractor_pipeline.predict(safe_nodes)
 
