@@ -10,6 +10,10 @@ from app.core.ml_models.fact_extractor.components.deadline_normalizer import Dea
 from app.core.ml_models.fact_extractor.components.processors import TextPreprocessor, FactPostprocessor
 
 
+from app.core.ml_models.fact_extractor.components.email_filter import EmailFilter
+from app.core.ml_models.fact_extractor.components.type_checker import FactTypeChecker
+
+
 class FactExtractor:
     def __init__(self):
         # Load the lightweight English model framework
@@ -25,48 +29,76 @@ class FactExtractor:
     ) -> List[EmailFactBatchResponse]:
         """Processes safe nodes and returns a dense array of envelope records matching len(safe_nodes)."""
 
+        non_bypassed_nodes = []
+        bypassed_indices = {}
+
+        # 1. Email Filter Layer: Pre-filtering bypassed category emails
+        for i, node in enumerate(safe_nodes):
+            category = node.get("category")
+            if EmailFilter.should_bypass_extraction(category):
+                bypassed_indices[i] = []
+            else:
+                non_bypassed_nodes.append((i, node))
+
         cleaned_pairs = [
-            (TextPreprocessor.clean(node.get("cleaned_body", "")), node.get("id"))
-            for node in safe_nodes
+            (
+                TextPreprocessor.clean(node.get("cleaned_body", "")),
+                (i, node.get("id"), node.get("category"))
+            )
+            for i, node in non_bypassed_nodes
         ]
 
-        dense_results: List[EmailFactBatchResponse] = []
+        dense_results_map = {}
 
-        # Execute your optimized spaCy pipe stream
-        for doc, raw_email_id in self.nlp.pipe(
-                cleaned_pairs,
-                as_tuples=True,
-                batch_size=batch_size,
-                disable=["ner"]
-        ):
-            email_id: UUID = cast(UUID, raw_email_id)
+        if cleaned_pairs:
+            # Execute optimized spaCy pipe stream only for non-bypassed nodes
+            for doc, context in self.nlp.pipe(
+                    cleaned_pairs,
+                    as_tuples=True,
+                    batch_size=batch_size,
+                    disable=["ner"]
+            ):
+                idx, raw_email_id, category = context
+                email_id = cast(UUID, raw_email_id)
 
-            try:
-                # 1. Retrieve the parsed facts from custom extension slot
-                raw_facts = getattr(doc._, "email_facts", [])
-                
-                # Copy raw facts to avoid mutating default shared lists
-                raw_facts_copied = [dict(f) for f in raw_facts]
+                try:
+                    # Retrieve the parsed facts from custom extension slot
+                    raw_facts = getattr(doc._, "email_facts", [])
+                    
+                    # Copy raw facts to avoid mutating default shared lists
+                    raw_facts_copied = [dict(f) for f in raw_facts]
 
-                # 2. Enrich with deadlines
-                enriched_facts = DeadlineNormalizer.normalize_deadlines(raw_facts_copied)
+                    # 2. Enrich with deadlines
+                    enriched_facts = DeadlineNormalizer.normalize_deadlines(raw_facts_copied)
 
-                # 3. Postprocess (clean & sanitize & deduplicate)
-                final_facts_list: List[Dict[str, Any]] = FactPostprocessor.process(enriched_facts)
+                    # 3. Postprocess (clean & sanitize & deduplicate)
+                    post_processed = FactPostprocessor.process(enriched_facts)
 
-            except Exception as e:
-                print(f"[ML SERVICE ERROR] FactExtractor item failure for email {email_id}: {e}")
-                final_facts_list = []
+                    # 4. Fact Type Checker Layer: Validate type assignments and filter out noise
+                    validated_facts = FactTypeChecker.validate_fact_types(post_processed)
 
-            # 4. Construct your envelope mapping perfectly to EmailFactBatchResponse
-            envelope: EmailFactBatchResponse = {
-                "email_id": str(email_id),
-                "facts": cast(List[EmailFactPredictionDict], final_facts_list)
+                    # 5. Email Filter Layer: Filter final fact types allowed for this category
+                    final_facts_list = EmailFilter.filter_extracted_facts(category, validated_facts)
+
+                except Exception as e:
+                    print(f"[ML SERVICE ERROR] FactExtractor item failure for email {email_id}: {e}")
+                    final_facts_list = []
+
+                dense_results_map[idx] = {
+                    "email_id": str(email_id),
+                    "facts": cast(List[EmailFactPredictionDict], final_facts_list)
+                }
+
+        # Populate bypassed items in the map
+        for idx in bypassed_indices:
+            node = safe_nodes[idx]
+            dense_results_map[idx] = {
+                "email_id": str(node.get("id")),
+                "facts": []
             }
 
-            dense_results.append(envelope)
-
-        return dense_results
+        # Return results in the exact original order
+        return [dense_results_map[i] for i in range(len(safe_nodes))]
 
 
 # Quick self-contained execution script for testing local workflows
