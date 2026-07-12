@@ -306,8 +306,10 @@ class FactParser:
 
     @classmethod
     def _heal_misclassified_imperatives(cls, sent, current_verbs: List[Token]) -> List[Token]:
-        od = OwnershipDetector()
-        imperative_actions = od.ASSET_ROUTING_VERBS | od.DELEGATION_VERBS
+        imperative_actions = {
+            "forward", "route", "pass", "send", "transfer", "ship",
+            "assign", "delegate", "appoint", "nominate"
+        }
 
         for token in sent:
             if token.pos_ == "ADV" and token.dep_ == "ROOT":

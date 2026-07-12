@@ -187,11 +187,8 @@ class FactPostprocessor:
         if action_verb in cls.HARD_DELETE_VERBS:
             return True
 
-        if action_verb not in cls.ALLOWED_ACTION_VERBS:
-            if action_verb not in cls.CASUAL_VERBS:
-                return False
-
-        if action_verb in cls.CASUAL_VERBS or action_verb not in cls.ALLOWED_ACTION_VERBS:
+        # If it is a known casual verb, we only allow it if it acts on a high-value object
+        if action_verb in cls.CASUAL_VERBS:
             if object_prim and any(cue in object_prim for cue in cls.HIGH_VALUE_OBJECT_CUES):
                 return False
             return True

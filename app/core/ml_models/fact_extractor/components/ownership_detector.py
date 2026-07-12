@@ -7,30 +7,6 @@ class OwnershipDetector:
         self.THIRD_PERSON_PRONOUNS: Set[str] = {"he", "she", "they", "it"}
         self.LOCAL_TEAM_PRONOUNS: Set[str] = {"i", "we", "you"}
 
-        # 2. Structural/Semantic Functional Verb Classes
-        # Verbs that shift future operational liability to an external entity
-        self.DELEGATION_VERBS: Set[str] = {"assign", "delegate", "appoint", "nominate"}
-
-        # Verbs that command the reader to physically move/route a data asset
-        self.ASSET_ROUTING_VERBS: Set[str] = {"forward", "route", "pass", "send", "transfer", "ship"}
-
-    def is_verb_assigned_to_me(self, verb: Token) -> bool:
-        """
-        Evaluates if the action described by the verb token belongs to the reader/recipient (local team)
-        or an external entity.
-        """
-        if verb.pos_ != "VERB":
-            return False
-
-        # Stage 1: Resolve grammar dependencies up to the controlling verb
-        governing_verb = self._resolve_governing_root(verb)
-
-        # Stage 2: Extract explicit linguistic roles present in the clause
-        clause_roles = self._extract_clause_roles(governing_verb)
-
-        # Stage 3: Evaluate extracted roles against routing rules
-        return self._evaluate_routing_matrix(governing_verb, clause_roles)
-
     def determine_subject_actor(self, verb: Token) -> str:
         """
         Determines the grammatical actor of the verb (e.g., "recipient", "sender", "third-party").
@@ -65,8 +41,7 @@ class OwnershipDetector:
             "has_local_subject": False,
             "has_sender_subject": False,
             "has_recipient_subject": False,
-            "has_external_subject": False,
-            "has_external_destination": False
+            "has_external_subject": False
         }
 
         for child in verb.children:
@@ -74,8 +49,6 @@ class OwnershipDetector:
                 self._classify_subject_actor(child, roles)
             elif child.dep_ == "agent":
                 self._classify_passive_agent(child, roles)
-            elif child.dep_ in {"dative", "prep"} or child.text.lower() == "to":
-                self._classify_destination_recipient(child, roles)
 
         return roles
 
@@ -106,33 +79,3 @@ class OwnershipDetector:
                 roles["has_recipient_subject"] = True
             elif node_lower in self.THIRD_PERSON_PRONOUNS or node.pos_ in {"NOUN", "PROPN"}:
                 roles["has_external_subject"] = True
-
-    def _classify_destination_recipient(self, prep_token: Token, roles: Dict[str, bool]) -> None:
-        """Detects if an action redirects something to an external third-party target."""
-        for node in prep_token.subtree:
-            node_lower = node.text.lower()
-            if (node.pos_ in {"NOUN", "PROPN"} or node_lower in self.THIRD_PERSON_PRONOUNS) and (
-                    node_lower not in self.LOCAL_TEAM_PRONOUNS):
-                roles["has_external_destination"] = True
-
-    def _evaluate_routing_matrix(self, verb: Token, roles: Dict[str, bool]) -> bool:
-        """Applies routing rules to determine if the recipient owns this verb execution."""
-        verb_lemma = verb.lemma_.lower()
-
-        if verb_lemma in self.ASSET_ROUTING_VERBS:
-            return True
-
-        if verb_lemma in self.DELEGATION_VERBS and roles["has_external_destination"]:
-            if roles["has_external_subject"] and not roles["has_local_subject"]:
-                return False
-            return True
-
-        # If it explicitly has a sender subject (e.g., "I will do X"), it is a commitment for the sender,
-        # so it's not a task for the recipient.
-        if roles["has_sender_subject"]:
-            return False
-
-        if roles["has_external_subject"] and not roles["has_recipient_subject"]:
-            return False
-
-        return True
