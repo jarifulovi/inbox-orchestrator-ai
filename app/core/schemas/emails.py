@@ -27,3 +27,4 @@ class EmailRow(TypedDict):
 
     detected_entities: dict[str, Any] | None  # { people: ["name", "email"], organizations: [], urls: [], dates: [] }
     raw_payload: dict[str, Any] | None
+    embedding: NotRequired[list[float]]

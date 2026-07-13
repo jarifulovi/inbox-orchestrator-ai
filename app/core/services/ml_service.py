@@ -8,6 +8,7 @@ from app.core.ml_models.fact_extractor.fact_extractor import FactExtractor
 from app.core.ml_models.classifier.predictor import EmailClassifier
 from app.core.ml_models.security import PostSecurityValidator
 from app.core.ml_models.security.pre_security import PreSecurityFilter
+from app.core.ml_models.embedder.embedder import EmailEmbedder
 from app.core.schemas.email_facts import EmailFactBatchResponse
 from app.core.ml_models.unified_constants import (
     ACTIONABLE_INTENT_LABELS,
@@ -27,6 +28,8 @@ class MLEngineService:
         self.classifier_engine = EmailClassifier()  # Pass 2a: Intent categorization
         self.fact_extractor_pipeline = FactExtractor()
         self.post_security_pipeline = PostSecurityValidator()
+        self.embedder = EmailEmbedder()
+
 
     def _preprocess_batch(self, email_nodes: list[dict]) -> list[dict]:
         """
@@ -271,22 +274,74 @@ class MLEngineService:
             ml_batch_outputs: list[dict]
     ):
         """
-        Persists classification category and structured ai_metadata directly to emails table.
+        Persists classification category, structured ai_metadata, and semantic embeddings directly to emails table.
         """
         if not email_records or not ml_batch_outputs:
             return
 
-        async def _update_single_email(email_id: str, category_name: str, metadata: dict):
+        # Map email_records by id for safe lookup
+        email_map = {email["id"]: email for email in email_records if email.get("id")}
+
+        async def _update_single_email(email_id: str, category_name: str, metadata: dict, embedding: list[float] | None):
             try:
-                db_client.table("emails").update({
+                payload = {
                     "category": category_name,
                     "ai_metadata": metadata
-                }).eq("id", email_id).execute()
+                }
+                if embedding is not None:
+                    payload["embedding"] = embedding
+                db_client.table("emails").update(payload).eq("id", email_id).execute()
             except Exception as e:
-                print(f"[ML ERROR] Failed to update email {email_id} category/metadata: {str(e)}")
+                print(f"[ML ERROR] Failed to update email {email_id} category/metadata/embedding: {str(e)}")
+
+        # 1. Compile structured search documents for embedding batch generation
+        documents = []
+        ordered_emails = []
+        for ml in ml_batch_outputs:
+            email_id = ml.get("id")
+            email = email_map.get(email_id)
+            if not email:
+                print(f"[ML WARNING] Email ID {email_id} not found in email_records. Skipping embedding.")
+                continue
+
+            ordered_emails.append(email)
+            classification = ml.get("classification", {})
+            label_name = classification.get("label") or "UNCATEGORIZED"
+            
+            raw_payload = email.get("raw_payload") or {}
+            label_ids = raw_payload.get("labelIds") or []
+            
+            raw_facts_payload = ml.get("actions", []) or []
+            fact_items = []
+            if isinstance(raw_facts_payload, dict):
+                fact_items = raw_facts_payload.get("facts", []) or []
+            elif isinstance(raw_facts_payload, list):
+                fact_items = raw_facts_payload
+
+            doc_parts = [
+                f"Subject: {email.get('subject') or ''}",
+                f"Category: {label_name}",
+                f"Gmail Labels: {', '.join(label_ids)}",
+                f"Snippet: {(email.get('snippet') or '')[:400]}",
+                "Facts:"
+            ]
+            for fact in fact_items:
+                if isinstance(fact, dict) and fact.get("source_sentence"):
+                    doc_parts.append(f"- {fact.get('source_sentence')}")
+            
+            structured_doc = "\n".join(doc_parts)
+            documents.append(structured_doc)
+
+        # 2. Generate embeddings in batch
+        embeddings = [None] * len(ordered_emails)
+        if documents:
+            try:
+                embeddings = self.embedder.generate_embeddings(documents)
+            except Exception as emb_err:
+                print(f"[ML ERROR] Failed to generate batch embeddings: {emb_err}")
 
         update_tasks = []
-        for email, ml in zip(email_records, ml_batch_outputs):
+        for i, (email, ml) in enumerate(zip(ordered_emails, ml_batch_outputs)):
             classification = ml.get("classification", {})
             security = ml.get("security", {})
             status = ml.get("status", "APPROVED")
@@ -332,14 +387,12 @@ class MLEngineService:
             }
 
             update_tasks.append(
-                _update_single_email(email["id"], label_name, ai_metadata)
+                _update_single_email(email["id"], label_name, ai_metadata, embeddings[i])
             )
 
         if update_tasks:
             await asyncio.gather(*update_tasks)
-            print(f"[ML SUCCESS] Processed category and metadata for {len(update_tasks)} emails")
-
-
+            print(f"[ML SUCCESS] Processed category, metadata, and embedding for {len(update_tasks)} emails")
     async def _persist_email_facts(
         self,
         db_client,
@@ -353,9 +406,13 @@ class MLEngineService:
         if not email_records or not ml_batch_outputs:
             return
 
+        email_map = {email["id"]: email for email in email_records if email.get("id")}
+
         fact_rows = []
-        for email, ml in zip(email_records, ml_batch_outputs):
-            if not isinstance(ml, dict):
+        for ml in ml_batch_outputs:
+            email_id = ml.get("id")
+            email = email_map.get(email_id)
+            if not email:
                 continue
 
             raw_facts_payload = ml.get("actions", []) or []
