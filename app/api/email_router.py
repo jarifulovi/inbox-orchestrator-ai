@@ -20,6 +20,28 @@ async def list_emails(
     return {"emails": emails}
 
 
+@router.get("/threads")
+async def list_threads(
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        account_id: str = Depends(get_verified_account_id),
+        db=Depends(get_supabase_client)
+):
+    service = EmailWebService(db)
+    threads = await service.get_user_threads(account_id, limit, offset)
+    return {"threads": threads}
+
+
+@router.post("/sync")
+async def sync_inbox(
+        account_id: str = Depends(get_verified_account_id),
+        db=Depends(get_supabase_client)
+):
+    service = EmailWebService(db)
+    await service.sync_user_inbox(account_id)
+    return {"status": "success"}
+
+
 @router.get("/{email_id}")
 async def view_email(
         email_id: str,
