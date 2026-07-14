@@ -65,3 +65,19 @@ SECURITY_RISK_CATEGORIES = [
     "bulk_spam",
     "spoofing_target"
 ]
+
+
+# =====================================================================
+# 4. FACT TYPE & TASK MAPPING DEFINITIONS
+# =====================================================================
+# Valid linguistic fact type categories
+FACT_TYPES = ["task", "commitment", "decision", "question", "fact"]
+
+# Mapping of fact types to their task eligibility (which are treated as actionable tasks)
+FACT_TASK_MAPPING = {
+    "task": True,
+    "commitment": True,
+    "decision": False,
+    "question": False,
+    "fact": False
+}

@@ -1,4 +1,4 @@
-from typing import TypedDict, List, Dict, Any, Optional
+from typing import TypedDict, List, Dict, Any, Optional, Literal
 from datetime import datetime
 
 class EmailFactPayloadDict(TypedDict, total=False):
@@ -10,7 +10,7 @@ class EmailFactPayloadDict(TypedDict, total=False):
 
 class EmailFactPredictionDict(TypedDict):
     sentence_index: int
-    fact_type: str
+    fact_type: Literal["task", "commitment", "decision", "question", "fact"]
     payload: EmailFactPayloadDict
     source_sentence: str
     confidence: float

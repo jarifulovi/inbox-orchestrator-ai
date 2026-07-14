@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -23,7 +23,7 @@ class EmailFactPrediction(BaseModel):
     Represents a single parsed sentence fact prediction.
     """
     sentence_index: int
-    fact_type: str  # task, commitment, decision, question, or fact
+    fact_type: Literal["task", "commitment", "decision", "question", "fact"]
     payload: EmailFactPayload
     source_sentence: str
     confidence: float
@@ -47,7 +47,7 @@ class EmailFactCreate(BaseModel):
     user_id: UUID
     connected_account_id: UUID
     sentence_index: int
-    fact_type: str
+    fact_type: Literal["task", "commitment", "decision", "question", "fact"]
     payload: Dict[str, Any]  # Store serialized payload dictionary directly
     source_sentence: str
     anchor_date: Optional[datetime] = None
