@@ -77,3 +77,22 @@ class ExtractedTaskBlueprint(BaseModel):
 class BatchExtractedTaskBlueprint(BaseModel):
     """Batch response of extracted tasks."""
     tasks: List[ExtractedTaskBlueprint]
+
+
+class UnifiedThreadOrchestrationResponse(BaseModel):
+    """Unified Gemini response schema for thread-by-thread features orchestration."""
+    task_generations: List[ExtractedTaskBlueprint] = Field(
+        description="Task blueprints generated from pre-extracted action items on this thread."
+    )
+    task_resolutions: List[TaskResolution] = Field(
+        description="Resolution status updates for existing pending tasks on this thread."
+    )
+    thread_summary: str = Field(
+        description="A concise, updated 2-3 sentence summary of the entire thread conversation."
+    )
+    thread_priority: str = Field(
+        description="The overall derived priority of the thread ('High', 'Medium', 'Low') based on urgency of tasks and tone."
+    )
+    last_user_email_expects_reply: bool = Field(
+        description="True if the last email sent by the user contains an action item, question, or request expecting a reply from the recipient. False if it is concluding (e.g. 'thanks') or doesn't expect a reply."
+    )
