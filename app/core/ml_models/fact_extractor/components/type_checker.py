@@ -2,12 +2,13 @@ import re
 from typing import List, Dict, Any
 
 class FactTypeChecker:
-    # Cues for standard greetings, conversational sign-offs, and disclaimers to treat as noise
     BOILERPLATE_CUES = {
         "thanks", "thank you", "best regards", "kind regards", "sincerely",
         "regards", "best", "dear", "hi", "hello", "hey", "good morning",
         "good afternoon", "good evening", "cheers", "yours truly", "respectfully",
-        "sent from my iphone", "sent from my mail", "all the best", "warm regards"
+        "sent from my iphone", "sent from my mail", "all the best", "warm regards",
+        "best wishes", "warmest regards", "thanks & regards", "thanks and regards",
+        "many thanks", "with thanks"
     }
 
     # Questions that are conversational check-ins rather than informational requests

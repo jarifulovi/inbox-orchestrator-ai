@@ -3,6 +3,7 @@ from spacy.tokens import Token, Span
 
 from app.core.ml_models.fact_extractor.components.action_detector import ActionDetector
 from app.core.ml_models.fact_extractor.components.ownership_detector import OwnershipDetector
+from app.core.ml_models.fact_extractor.components.sentence_validator import SentenceValidator
 
 
 class FactParser:
@@ -25,6 +26,9 @@ class FactParser:
         ownership_detector = OwnershipDetector()
 
         for sent_idx, sent in enumerate(doc.sents):
+            if not SentenceValidator.is_valid_fact_sent(sent):
+                continue
+
             # 1. Base Entity Extraction
             entities_dict: Dict[str, List[str]] = {
                 "PERSON": [],
