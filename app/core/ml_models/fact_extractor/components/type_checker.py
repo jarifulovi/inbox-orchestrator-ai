@@ -1,16 +1,6 @@
-import re
 from typing import List, Dict, Any
 
 class FactTypeChecker:
-    BOILERPLATE_CUES = {
-        "thanks", "thank you", "best regards", "kind regards", "sincerely",
-        "regards", "best", "dear", "hi", "hello", "hey", "good morning",
-        "good afternoon", "good evening", "cheers", "yours truly", "respectfully",
-        "sent from my iphone", "sent from my mail", "all the best", "warm regards",
-        "best wishes", "warmest regards", "thanks & regards", "thanks and regards",
-        "many thanks", "with thanks"
-    }
-
     # Questions that are conversational check-ins rather than informational requests
     RHETORICAL_QUESTION_PHRASES = {
         "how are you", "hope you are well", "hope all is well", "how is it going",
@@ -20,8 +10,7 @@ class FactTypeChecker:
     @classmethod
     def validate_fact_types(cls, facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Validates and refines parsed facts, aggressively dropping conversational noise,
-        boilerplate text, greetings, and rhetorical check-in questions.
+        Validates and refines parsed facts, dropping rhetorical questions and invalid assignments.
         """
         valid_facts = []
 
@@ -31,21 +20,11 @@ class FactTypeChecker:
             source_sentence = fact.get("source_sentence", "").strip()
             source_sentence_lower = source_sentence.lower()
 
-            # 1. Broad Noise Filter: Check if the sentence is pure boilerplate/sign-off
-            # Clean punctuation from start/end to catch e.g., "Thanks," or "Best regards!"
-            cleaned_sentence = re.sub(r"^[^\w]+|[^\w]+$", "", source_sentence_lower)
-            if cleaned_sentence in cls.BOILERPLATE_CUES:
+            # Skip empty or link-only facts
+            if not source_sentence_lower or source_sentence_lower in {"[link]", "link", "opt out"}:
                 continue
 
-            # Skip sentences that are just signature fragments or empty links
-            if not cleaned_sentence or cleaned_sentence in {"[link]", "link", "opt out"}:
-                continue
-
-            # Skip generic conversational filler phrases
-            if cleaned_sentence in {"thanks and regards", "thanks & regards", "best wishes"}:
-                continue
-
-            # 2. Fact-Type Specific Verification
+            # Fact-Type Specific Verification
             if fact_type == "question":
                 # Filter out rhetorical / check-in questions
                 if any(phrase in source_sentence_lower for phrase in cls.RHETORICAL_QUESTION_PHRASES):
@@ -70,19 +49,8 @@ class FactTypeChecker:
                     continue
 
             elif fact_type == "fact":
-                # Check for substring matches of standard signature disclaimers/greetings
-                has_boilerplate_word = any(cue in source_sentence_lower for cue in {
-                    "thanks", "thank you", "regards", "sincerely", "cheers", "best wishes",
-                    "sent from", "iphone", "android", "outlook", "best regards", "kind regards",
-                    "dear", "hi", "hello"
-                })
-                # If it has a boilerplate cue and is short, skip it
-                if has_boilerplate_word and len(source_sentence_lower.split()) <= 8:
-                    continue
-
                 # Ensure generic facts are not just extremely short noise fragments (e.g. <= 3 words)
                 words = [w for w in source_sentence_lower.split() if w.strip()]
-                # Skip if it is too short and has no high-value noun chunks/entities
                 if len(words) <= 3:
                     continue
 
