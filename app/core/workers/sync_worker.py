@@ -109,8 +109,13 @@ class EmailSyncWorker:
                     max_results=self.INITIAL_BATCH_SIZE
                 )
                 emails_to_process = batch_result["emails"]
-                next_cursor = batch_result.get("next_page_token") or batch_result.get("history_id")
-                next_mode = "BACKFILLING"
+                pg_token = batch_result.get("next_page_token")
+                if pg_token:
+                    next_cursor = pg_token
+                    next_mode = "BACKFILLING"
+                else:
+                    next_cursor = batch_result.get("history_id")
+                    next_mode = "ACTIVE"
 
             elif sync_mode == "BACKFILLING":
                 print("[ROUTE -> BACKFILL CONTINUATION]")
@@ -119,8 +124,12 @@ class EmailSyncWorker:
                     max_results=self.INITIAL_BATCH_SIZE
                 )
                 emails_to_process = batch_result["emails"]
-                next_cursor = batch_result.get("next_page_token") or batch_result.get("history_id")
-                if not batch_result.get("next_page_token"):
+                pg_token = batch_result.get("next_page_token")
+                if pg_token:
+                    next_cursor = pg_token
+                    next_mode = "BACKFILLING"
+                else:
+                    next_cursor = batch_result.get("history_id")
                     next_mode = "ACTIVE"
 
             elif sync_mode == "ACTIVE":

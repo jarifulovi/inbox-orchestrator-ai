@@ -88,7 +88,17 @@ class GmailIngestionService:
         messages = result.get('messages', [])
         next_page_token = result.get('nextPageToken')
 
-        processed_emails = [self._get_email_details(msg['id']) for msg in messages]
+        processed_emails = []
+        for msg in messages:
+            try:
+                detail = self._get_email_details(msg['id'])
+                processed_emails.append(detail)
+            except Exception as e:
+                err_str = str(e)
+                if "notFound" in err_str or "404" in err_str:
+                    print(f"[SYNC] Message {msg['id']} was deleted or not found. Skipping.")
+                else:
+                    print(f"[MESSAGE FETCH ERROR] {msg['id']}: {err_str}")
 
         # 💡 FIX: Fetch the absolute real, global current historyId from the user's profile status!
         try:
@@ -179,7 +189,11 @@ class GmailIngestionService:
                 email_detail = self._get_email_details(msg_id)
                 processed_emails.append(email_detail)
             except Exception as e:
-                print(f"[MESSAGE FETCH ERROR] {msg_id}: {str(e)}")
+                err_str = str(e)
+                if "notFound" in err_str or "404" in err_str:
+                    print(f"[SYNC] Message {msg_id} was deleted or not found. Skipping.")
+                else:
+                    print(f"[MESSAGE FETCH ERROR] {msg_id}: {err_str}")
                 continue
 
         return {
