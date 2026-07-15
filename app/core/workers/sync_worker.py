@@ -2,6 +2,8 @@ import asyncio
 from datetime import datetime, timezone
 from supabase import Client
 from app.core.db.supabase import get_supabase_client
+from app.core.schemas.emails import EmailRow
+from app.core.schemas.email_threads import EmailThreadRow
 from app.core.services.auth_service import ConnectedAccountService
 from app.core.services.gmail_service import GmailIngestionService
 from app.core.services.ml_service import MLEngineService
@@ -235,7 +237,7 @@ class EmailSyncWorker:
             emails_to_process: list[dict],
             thread_uuid_map: dict,
             account_id: str
-    ) -> list[dict]:
+    ) -> list[EmailRow]:
 
         records = []
 

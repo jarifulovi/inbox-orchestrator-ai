@@ -2,6 +2,7 @@ import base64
 import email.utils
 from datetime import datetime, timezone
 from googleapiclient.discovery import Resource
+from app.core.schemas.email_threads import EmailThreadRow
 
 
 class GmailIngestionService:
@@ -186,7 +187,7 @@ class GmailIngestionService:
             "history_id": final_history_id
         }
 
-    def format_thread_records(self, emails_to_process: list[dict], account_id: str) -> list[dict]:
+    def format_thread_records(self, emails_to_process: list[dict], account_id: str) -> list[EmailThreadRow]:
         """Aggregates and formats distinct parent thread records for a batch of emails."""
         unique_threads = {}
         for email in emails_to_process:

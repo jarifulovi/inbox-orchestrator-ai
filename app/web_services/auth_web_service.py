@@ -13,6 +13,7 @@ from google.oauth2.credentials import Credentials
 from fastapi import BackgroundTasks
 
 from app.core.workers.sync_worker import EmailSyncWorker
+from app.core.schemas.connected_accounts import ConnectedAccountRow
 from app.schemas.auth_schemas import (
     MeResponseSchema,
     MeUserSchema,
@@ -288,7 +289,7 @@ class AuthWebService:
             access_token: str,
             refresh_token: str | None,
             token_expiry
-    ):
+    ) -> ConnectedAccountRow:
         refresh_token_final = refresh_token or self._get_existing_refresh_token(user_id, provider_email)
         scope_string = " ".join(self.GOOGLE_SCOPES)
         response = self.db.table("connected_accounts").upsert(
