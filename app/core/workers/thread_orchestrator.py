@@ -4,6 +4,7 @@ from app.core.db.supabase import get_supabase_client
 from app.core.llm.client import LLMClient
 from app.core.services.content_compressor import ContentCompressorService
 from app.core.services.tasks.thread_orchestration import ThreadOrchestrationService
+from app.core.ml_models.unified_constants import ELIGIBLE_TASK_FACT_TYPES
 
 
 class ThreadOrchestrator:
@@ -82,14 +83,15 @@ class ThreadOrchestrator:
             self.db.table("email_threads").update({"is_processed": True}).eq("id", thread_id).execute()
             return
 
-        # 3. Fetch all extracted actions for these emails
+        # 3. Fetch all task-eligible facts for these emails
         email_ids = [e["id"] for e in emails]
-        actions_res = self.db.table("extracted_actions") \
+        facts_res = self.db.table("email_facts") \
             .select("*") \
             .in_("email_id", email_ids) \
+            .in_("fact_type", ELIGIBLE_TASK_FACT_TYPES) \
             .execute()
 
-        actions = actions_res.data or []
+        facts = facts_res.data or []
 
         # 4. Fetch all tasks associated with this thread
         tasks_res = self.db.table("tasks") \
@@ -99,10 +101,10 @@ class ThreadOrchestrator:
 
         thread_tasks = tasks_res.data or []
 
-        # 5. Partition tasks & actions
+        # 5. Partition tasks & facts
         pending_tasks = [t for t in thread_tasks if t["status"] == "pending"]
-        tasked_action_ids = {t["extracted_action_id"] for t in thread_tasks if t["extracted_action_id"]}
-        actions_to_process = [a for a in actions if a["id"] not in tasked_action_ids]
+        tasked_fact_ids = {t["email_fact_id"] for t in thread_tasks if t["email_fact_id"]}
+        facts_to_process = [f for f in facts if f["id"] not in tasked_fact_ids]
 
         # -------------------------------------------------------------
         # LLM-BYPASS CHECK
@@ -112,7 +114,7 @@ class ThreadOrchestrator:
         # If there are no new actions to process, we bypass Gemini entirely
         # to save tokens and execution time.
         # -------------------------------------------------------------
-        if not actions_to_process:
+        if not facts_to_process:
             print(f"⚡ [ThreadOrchestrator] Bypassing LLM for thread {thread_id} (No new action items).")
             summary, priority, expects_reply = self.orchestration_service.generate_rule_based_fallback(
                 thread, emails
@@ -158,16 +160,16 @@ class ThreadOrchestrator:
             return
 
         # 6. Format context data for Gemini
-        actions_payload = [
+        facts_payload = [
             {
-                "id": a["id"],
-                "verb_primitive": a.get("verb_primitive"),
-                "object_primitive": a.get("object_primitive"),
-                "source_sent": a.get("source_sentence"),
-                "raw_entities": a.get("raw_entities"),
-                "anchor_date": a.get("parsed_deadline") or thread.get("last_message_at")
+                "id": f["id"],
+                "verb_primitive": f.get("payload", {}).get("action") if f.get("payload") else None,
+                "object_primitive": f.get("payload", {}).get("object") if f.get("payload") else None,
+                "source_sent": f.get("source_sentence"),
+                "raw_entities": f.get("payload", {}).get("entities") if f.get("payload") else None,
+                "anchor_date": f.get("anchor_date") or thread.get("last_message_at")
             }
-            for a in actions_to_process
+            for f in facts_to_process
         ]
 
         email_manifest = [
@@ -184,62 +186,90 @@ class ThreadOrchestrator:
         # 7. Orchestrate via LLM (Gemini)
         response = self.orchestration_service.orchestrate_thread_via_llm(
             thread_subject=thread.get("subject") or "No Subject",
-            actions_payload=actions_payload,
+            actions_payload=facts_payload,
             email_manifest=email_manifest,
             anchor_date=thread.get("last_message_at") or datetime.now(timezone.utc).isoformat()
         )
 
         # 8. Apply modifications:
-        # A. Upsert generated tasks
-        new_tasks = []
-        actions_by_id = {a["id"]: a for a in actions_to_process}
-
-        for blueprint in response.task_generations:
-            if not blueprint.is_actionable_task:
-                continue
-            action = actions_by_id.get(blueprint.extracted_action_id)
-            if not action:
-                continue
-
-            fingerprint = self._generate_action_fingerprint(
-                thread_id,
-                action.get("verb_primitive", ""),
-                action.get("object_primitive", "")
+        # A. Check if the response reports no actionable tasks (bypass LLM summary/priority)
+        if not response.has_actionable_tasks:
+            summary, _, expects_reply = self.orchestration_service.generate_rule_based_fallback(
+                thread, emails
             )
+            thread_priority = "low"
+            thread_summary = summary
+            new_tasks = []
 
-            new_tasks.append({
-                "extracted_action_id": blueprint.extracted_action_id,
-                "email_id": action["email_id"],
-                "thread_id": thread_id,
-                "user_id": user_id,
-                "title": blueprint.title,
-                "status": "pending",
-                "priority": blueprint.priority,
-                "intent_label": blueprint.intent_label,
-                "action_fingerprint": fingerprint,
-                "due_date": blueprint.due_date_iso
-            })
+            # Derive overall workflow state
+            has_unresolved_tasks = len(pending_tasks) > 0
+            workflow_status = "informational"
+            if has_unresolved_tasks:
+                workflow_status = "needs_action"
+            else:
+                latest_email = emails[0]
+                latest_sender = latest_email.get("sender", "").lower()
+                is_user_sender = user_email.lower() in latest_sender if user_email else False
 
-        if new_tasks:
-            self.db.table("tasks") \
-                .upsert(new_tasks, on_conflict="user_id, action_fingerprint") \
-                .execute()
-
-        # C. Derive overall workflow state
-        # Any remaining unresolved tasks (including new ones)
-        has_unresolved_tasks = len(pending_tasks) > 0 or len(new_tasks) > 0
-
-        workflow_status = "informational"
-        if has_unresolved_tasks:
-            workflow_status = "needs_action"
+                if is_user_sender and expects_reply:
+                    workflow_status = "awaiting_reply"
         else:
-            # Check if last sender was user (emails[0] is the latest email)
-            latest_email = emails[0]
-            latest_sender = latest_email.get("sender", "").lower()
-            is_user_sender = user_email.lower() in latest_sender if user_email else False
+            # B. Upsert generated tasks
+            new_tasks = []
+            facts_by_id = {f["id"]: f for f in facts_to_process}
 
-            if is_user_sender and response.last_user_email_expects_reply:
-                workflow_status = "awaiting_reply"
+            for blueprint in response.task_generations:
+                if not blueprint.is_actionable_task:
+                    continue
+                fact = facts_by_id.get(blueprint.email_fact_id)
+                if not fact:
+                    continue
+
+                payload = fact.get("payload") or {}
+                verb = payload.get("action") or ""
+                obj = payload.get("object") or ""
+
+                fingerprint = self._generate_action_fingerprint(
+                    thread_id,
+                    verb,
+                    obj
+                )
+
+                new_tasks.append({
+                    "email_fact_id": blueprint.email_fact_id,
+                    "email_id": fact["email_id"],
+                    "thread_id": thread_id,
+                    "user_id": user_id,
+                    "connected_account_id": account_id,
+                    "title": blueprint.title,
+                    "status": "pending",
+                    "priority": blueprint.priority,
+                    "intent_label": blueprint.intent_label,
+                    "action_fingerprint": fingerprint,
+                    "due_date": blueprint.due_date_iso
+                })
+
+            if new_tasks:
+                self.db.table("tasks") \
+                    .upsert(new_tasks, on_conflict="user_id, action_fingerprint") \
+                    .execute()
+
+            # C. Derive overall workflow state
+            has_unresolved_tasks = len(pending_tasks) > 0 or len(new_tasks) > 0
+
+            workflow_status = "informational"
+            if has_unresolved_tasks:
+                workflow_status = "needs_action"
+            else:
+                latest_email = emails[0]
+                latest_sender = latest_email.get("sender", "").lower()
+                is_user_sender = user_email.lower() in latest_sender if user_email else False
+
+                if is_user_sender and response.last_user_email_expects_reply:
+                    workflow_status = "awaiting_reply"
+
+            thread_priority = response.thread_priority or "medium"
+            thread_summary = response.thread_summary or (thread.get("summary") or "No Summary")
 
         # D. Serialize context memory manifest
         context_memory = {
@@ -254,17 +284,17 @@ class ThreadOrchestrator:
                 for e in reversed(emails)  # Chronological order
             ],
             "aggregated_facts": [],
-            "thread_summary": response.thread_summary
+            "thread_summary": thread_summary
         }
 
         # E. Update the thread record
         self.db.table("email_threads").update({
             "workflow_status": workflow_status,
-            "priority": response.thread_priority.lower(),
-            "summary": response.thread_summary,
+            "priority": thread_priority.lower(),
+            "summary": thread_summary,
             "context_memory": context_memory,
             "is_processed": True,
             "summary_generated_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", thread_id).execute()
 
-        print(f"✔ [ThreadOrchestrator] Orchestrated thread {thread_id} -> status: {workflow_status}, priority: {response.thread_priority}")
+        print(f"✔ [ThreadOrchestrator] Orchestrated thread {thread_id} -> status: {workflow_status}, priority: {thread_priority}")

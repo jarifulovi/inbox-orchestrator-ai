@@ -78,6 +78,11 @@ FACT_TASK_MAPPING = {
     "task": True,
     "commitment": True,
     "decision": False,
-    "question": False,
+    "question": True,
     "fact": False
 }
+
+# Derived list of fact types that are eligible to become tasks
+ELIGIBLE_TASK_FACT_TYPES = [
+    fact_type for fact_type, eligible in FACT_TASK_MAPPING.items() if eligible
+]

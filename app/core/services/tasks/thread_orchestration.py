@@ -2,29 +2,32 @@ import json
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Tuple
 from app.core.llm.client import LLMClient
-from app.core.schemas.tasks import UnifiedThreadOrchestrationResponse, ExtractedTaskBlueprint, TaskResolution
+from app.core.schemas.tasks import UnifiedThreadOrchestrationResponse, ExtractedTaskBlueprint
 
 """
 ================================================================================
 TOKEN COST ESTIMATION ANALYSIS
 ================================================================================
-Based on the unified thread prompt schema, here is the average token consumption model:
+Based on the optimized schema (no task resolutions, nullable output properties), 
+here is the average token consumption model:
 
-- Prompt Overhead (Instruction, Rules, Pydantic Schema): ~800 tokens
-- Actions Context (avg. 1 pre-extracted action): ~100 tokens
-- Tasks Context (avg. 1 existing pending task): ~100 tokens
-- Email Manifest Context (avg. 2 emails with compressed body): ~300 tokens
-- Total Input: ~1,300 tokens
-- Output (UnifiedThreadOrchestrationResponse): ~250 tokens
-- Total Tokens / Execution: ~1,550 tokens
+1. Actionable Threads (has_actionable_tasks = True):
+   - Prompt Overhead (Instruction, Rules, Pydantic Schema): ~650 tokens
+   - Facts/Actions Context (avg. 1 fact): ~100 tokens
+   - Email Manifest Context (avg. 2 compressed emails): ~300 tokens
+   - Total Input: ~1,050 tokens
+   - Output (Full task list, summary, priority): ~200 tokens
+   - Total Tokens: ~1,250 tokens
+   - Cost (Input $0.075/1M, Output $0.30/1M): ~$0.000138 per thread ($0.14 / 1k threads)
 
-With Gemini 1.5 Flash Pricing ($0.075 / 1M Input, $0.30 / 1M Output):
-- Input Cost: 1,300 * $0.000000075 = $0.0000975
-- Output Cost: 250 * $0.00000030 = $0.000075
-- Average Transaction Cost: ~$0.0001725 per thread (approx. $0.17 per 1,000 threads).
+2. Non-Actionable/System Threads (has_actionable_tasks = False):
+   - Total Input: ~1,050 tokens
+   - Output (Empty arrays/nulls): ~30 tokens
+   - Total Tokens: ~1,080 tokens
+   - Cost (Input $0.075/1M, Output $0.30/1M): ~$0.000088 per thread ($0.09 / 1k threads)
 
-Rule-based bypasses are implemented below to reduce this cost to $0.00 for threads
-without active action items or pending tasks.
+Rule-based bypasses completely avoid LLM calls (reducing cost to $0.00) 
+for sync cycles without new unprocessed email facts.
 ================================================================================
 """
 
@@ -39,27 +42,23 @@ class ThreadOrchestrationService:
         email_manifest: List[Dict[str, Any]],
         anchor_date: str
     ) -> str:
-        """Constructs a consolidated prompt for Gemini to analyze the thread's tasks, actions, and metadata."""
+        """Constructs a consolidated prompt for Gemini to analyze the thread's tasks and metadata."""
         return f"""
-You are an advanced internal operations assistant orchestrating workflow states on a single email thread.
+You are an advanced email operations manager.
 Subject: {thread_subject}
-Anchor Date: {anchor_date} (use this baseline to calculate relative task deadlines)
+Anchor Date: {anchor_date}
 
-Your tasks:
-1. TASK GENERATION:
-Review the following list of pre-extracted actions (JSON format) and determine if they should become task checklist items:
+Pre-extracted commitments/actions:
 {json.dumps(actions_payload, indent=2)}
-Rules:
-- For each item, decide if `is_actionable_task` is true. Mark it true only if it is a concrete, uncompleted action the user needs to perform. Mark false if it's purely informational, noise, or already resolved.
-- Provide a clear, actionable `title` for the task.
-- Categorize into `intent_label`: 'schedule_meeting', 'reply_requested', 'review_document', 'provide_information', 'make_payment', 'follow_up', or 'other'.
-- Determine `priority`: 'High', 'Medium', or 'Low'.
-- Determine `due_date_iso` as ISO 8601 string calculated from relative times (e.g. 'tomorrow') using the anchor date.
 
-2. THREAD METADATA:
-- Provide an updated, concise 2-3 sentence `thread_summary` summarizing the entire conversation history.
-- Determine the overall derived `thread_priority` ('High', 'Medium', 'Low') based on task urgency and tone.
-- Check if the last email sent by the user contains an action item, question, or request expecting a reply from the recipient. Set `last_user_email_expects_reply` to true or false.
+Instructions:
+1. Determine `has_actionable_tasks`. Set to True if there is at least one new, concrete task that demands human action. Set to False for generic system updates, newsletters, subscription notices, automated server stats, status alerts, or closures. Only focus on critical updates that demand task actions (e.g., Jira tickets, server down alerts, "action required" billing updates).
+2. If `has_actionable_tasks` is False:
+   - Set `task_generations` to an empty list.
+   - Leave `thread_summary`, `thread_priority`, and `last_user_email_expects_reply` as null (do not generate them).
+3. If `has_actionable_tasks` is True:
+   - Evaluate the action items. Set `is_actionable_task` to True only if it requires user action. Generate the actionable `title`, `intent_label`, `priority`, and `due_date_iso` (relative to anchor date).
+   - Generate `thread_summary` (2-4 concise sentences), `thread_priority` ('High', 'Medium', 'Low'), and `last_user_email_expects_reply` (True/False).
 """
 
     def orchestrate_thread_via_llm(

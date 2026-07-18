@@ -11,7 +11,7 @@ class TaskRow(TypedDict):
     Direct 1:1 mapping of your Database Task record structure.
     Used for type safety when extracting data via repositories.
     """
-    extracted_action_id: str  # UUID
+    email_fact_id: str  # UUID
     email_id: str  # UUID
     thread_id: str  # UUID
     user_id: str  # UUID
@@ -45,30 +45,11 @@ class WorkerThreadContext(TypedDict):
 # 2. LLM STRUCTURED OUTPUT SCHEMAS (Pydantic - Strict Gemini API Mapping)
 # =====================================================================
 
-class TaskResolution(BaseModel):
-    """LLM representation of an individual task evaluation request."""
-    id: str = Field(
-        description="The unique task UUID string provided in the evaluation context."
-    )
-    status: str = Field(
-        description="Determine the status of this task based on the emails: 'completed' (fully resolved or fulfilled), 'dismissed' (no longer relevant or explicitly cancelled), or 'pending' (still needs action)."
-    )
-    resolution_summary: str = Field(
-        description="A clear, concise 1-2 sentence summary explaining why this task is completed or remains pending based on the email data."
-    )
-
-
-class BatchThreadResolution(BaseModel):
-    """The strict blueprint passed to Gemini to evaluate all thread tasks at once."""
-    task_evaluations: List[TaskResolution] = Field(
-        description="List of resolution analysis records for each evaluated task ID."
-    )
-
 
 class ExtractedTaskBlueprint(BaseModel):
-    """The core task details extracted by Gemini from an action."""
-    extracted_action_id: str = Field(description="The UUID of the extracted action this task is generated for.")
-    is_actionable_task: bool = Field(description="True if the extracted action represents a real, uncompleted task that a user needs to act on. False if it's informational, already done, or too vague.")
+    """The core task details extracted by Gemini from an action fact."""
+    email_fact_id: str = Field(description="The UUID of the email fact this task is generated for.")
+    is_actionable_task: bool = Field(description="True if the email fact represents a real, uncompleted task that a user needs to act on. False if it's informational, already done, or too vague.")
     title: str = Field(description="Actionable and clear title for the task.")
     intent_label: str = Field(description="Categorize the action intent as one of the following: 'schedule_meeting', 'reply_requested', 'review_document', 'provide_information', 'make_payment', 'follow_up', or 'other'.")
     priority: str = Field(description="Task urgency: 'High', 'Medium', or 'Low'.")
@@ -81,15 +62,22 @@ class BatchExtractedTaskBlueprint(BaseModel):
 
 class UnifiedThreadOrchestrationResponse(BaseModel):
     """Unified Gemini response schema for thread-by-thread features orchestration."""
+    has_actionable_tasks: bool = Field(
+        description="True if there is at least one new concrete task requiring user action. False if purely informational, news, subscriptions, generic status updates, closures, or noise."
+    )
     task_generations: List[ExtractedTaskBlueprint] = Field(
-        description="Task blueprints generated from pre-extracted action items on this thread."
+        default=[],
+        description="Task blueprints generated from pre-extracted facts. Empty list if has_actionable_tasks is False."
     )
-    thread_summary: str = Field(
-        description="A concise, updated 2-3 sentence summary of the entire thread conversation."
+    thread_summary: Optional[str] = Field(
+        None,
+        description="Concise 2-3 sentence thread summary. Set to null if has_actionable_tasks is False."
     )
-    thread_priority: str = Field(
-        description="The overall derived priority of the thread ('High', 'Medium', 'Low') based on urgency of tasks and tone."
+    thread_priority: Optional[str] = Field(
+        None,
+        description="Overall thread priority ('High', 'Medium', 'Low'). Set to null if has_actionable_tasks is False."
     )
-    last_user_email_expects_reply: bool = Field(
-        description="True if the last email sent by the user contains an action item, question, or request expecting a reply from the recipient. False if it is concluding (e.g. 'thanks') or doesn't expect a reply."
+    last_user_email_expects_reply: Optional[bool] = Field(
+        None,
+        description="True if the last user email expects a response. Set to null if has_actionable_tasks is False."
     )
