@@ -107,22 +107,28 @@ class ThreadOrchestrator:
         # -------------------------------------------------------------
         # LLM-BYPASS CHECK
         # If there are no pending tasks and no new actions to process,
-        # we bypass Gemini entirely to save tokens and execution time.
         # -------------------------------------------------------------
-        if not pending_tasks and not actions_to_process:
-            print(f"⚡ [ThreadOrchestrator] Bypassing LLM for thread {thread_id} (No pending tasks or action items).")
+        # LLM-BYPASS CHECK
+        # If there are no new actions to process, we bypass Gemini entirely
+        # to save tokens and execution time.
+        # -------------------------------------------------------------
+        if not actions_to_process:
+            print(f"⚡ [ThreadOrchestrator] Bypassing LLM for thread {thread_id} (No new action items).")
             summary, priority, expects_reply = self.orchestration_service.generate_rule_based_fallback(
                 thread, emails
             )
 
             # Derive workflow status locally
             workflow_status = "informational"
-            latest_email = emails[0]
-            latest_sender = latest_email.get("sender", "").lower()
-            is_user_sender = user_email.lower() in latest_sender if user_email else False
+            if pending_tasks:
+                workflow_status = "needs_action"
+            else:
+                latest_email = emails[0]
+                latest_sender = latest_email.get("sender", "").lower()
+                is_user_sender = user_email.lower() in latest_sender if user_email else False
 
-            if is_user_sender and expects_reply:
-                workflow_status = "awaiting_reply"
+                if is_user_sender and expects_reply:
+                    workflow_status = "awaiting_reply"
 
             context_memory = {
                 "message_manifest": [
@@ -178,7 +184,6 @@ class ThreadOrchestrator:
         # 7. Orchestrate via LLM (Gemini)
         response = self.orchestration_service.orchestrate_thread_via_llm(
             thread_subject=thread.get("subject") or "No Subject",
-            pending_tasks=pending_tasks,
             actions_payload=actions_payload,
             email_manifest=email_manifest,
             anchor_date=thread.get("last_message_at") or datetime.now(timezone.utc).isoformat()
@@ -220,33 +225,9 @@ class ThreadOrchestrator:
                 .upsert(new_tasks, on_conflict="user_id, action_fingerprint") \
                 .execute()
 
-        # B. Update resolved/completed tasks
-        completed_ids = set()
-        for resolution in response.task_resolutions:
-            if resolution.status in ("completed", "dismissed"):
-                matching_task = next((t for t in pending_tasks if t["id"] == resolution.id), None)
-                if not matching_task:
-                    continue
-
-                completed_ids.add(resolution.id)
-                enriched = matching_task.get("enriched_context") or {}
-                enriched["resolution_summary"] = resolution.resolution_summary
-
-                self.db.table("tasks").update({
-                    "status": resolution.status,
-                    "enriched_context": enriched,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }).eq("id", resolution.id).execute()
-
         # C. Derive overall workflow state
-        # 1. Any remaining unresolved tasks (excluding the ones we just completed, including new ones)
-        has_unresolved_tasks = False
-        for t in pending_tasks:
-            if t["id"] not in completed_ids:
-                has_unresolved_tasks = True
-                break
-        if new_tasks:
-            has_unresolved_tasks = True
+        # Any remaining unresolved tasks (including new ones)
+        has_unresolved_tasks = len(pending_tasks) > 0 or len(new_tasks) > 0
 
         workflow_status = "informational"
         if has_unresolved_tasks:

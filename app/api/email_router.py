@@ -1,8 +1,10 @@
 from typing import Optional
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, HTTPException
 from app.web_services.email_web_service import EmailWebService
 from app.api.deps.account import get_verified_account_id
 from app.core.db.supabase import get_supabase_client
+from app.api.deps.auth import get_current_user
 
 router = APIRouter(prefix="/api/emails", tags=["emails"])
 
@@ -77,3 +79,41 @@ async def view_email(
         raise HTTPException(status_code=404, detail="Email not found")
 
     return email
+
+
+@router.post("/tasks/{task_id}/status")
+async def update_task_status(
+        task_id: str,
+        payload: dict,
+        auth_user: dict = Depends(get_current_user),
+        db=Depends(get_supabase_client)
+):
+    status = payload.get("status")
+    if status not in ("completed", "dismissed"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid status. Only 'completed' or 'dismissed' are allowed for manual updates."
+        )
+
+    user_id = auth_user.get("id")
+
+    # 1. Verify ownership: check that the task exists and belongs to the authenticated user
+    try:
+        task_res = db.table("tasks").select("id, user_id").eq("id", task_id).single().execute()
+        task = task_res.data
+    except Exception:
+        task = None
+
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found or access denied")
+    
+    if task["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Access denied. You do not own this task.")
+
+    # 2. Update status in tasks table
+    db.table("tasks").update({
+        "status": status,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }).eq("id", task_id).execute()
+
+    return {"status": "success", "task_id": task_id, "new_status": status}

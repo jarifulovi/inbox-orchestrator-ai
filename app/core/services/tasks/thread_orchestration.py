@@ -35,7 +35,6 @@ class ThreadOrchestrationService:
     def build_orchestration_prompt(
         self,
         thread_subject: str,
-        pending_tasks: List[Dict[str, Any]],
         actions_payload: List[Dict[str, Any]],
         email_manifest: List[Dict[str, Any]],
         anchor_date: str
@@ -57,19 +56,7 @@ Rules:
 - Determine `priority`: 'High', 'Medium', or 'Low'.
 - Determine `due_date_iso` as ISO 8601 string calculated from relative times (e.g. 'tomorrow') using the anchor date.
 
-2. TASK RESOLUTION:
-Review the incoming email replies to determine if any of the active pending tasks are resolved (completed or dismissed):
-Pending Tasks:
-{json.dumps([{"id": t["id"], "title": t["title"]} for t in pending_tasks], indent=2)}
-
-New Replies in Thread (Newest first):
-{json.dumps(email_manifest, indent=2)}
-Rules:
-- Evaluate each task ID.
-- Set `status` to 'completed' (resolved/fulfilled/replied to), 'dismissed' (cancelled/irrelevant), or 'pending' (still needs action).
-- Provide a clear 1-2 sentence `resolution_summary` explaining the decision based on the email context.
-
-3. THREAD METADATA:
+2. THREAD METADATA:
 - Provide an updated, concise 2-3 sentence `thread_summary` summarizing the entire conversation history.
 - Determine the overall derived `thread_priority` ('High', 'Medium', 'Low') based on task urgency and tone.
 - Check if the last email sent by the user contains an action item, question, or request expecting a reply from the recipient. Set `last_user_email_expects_reply` to true or false.
@@ -78,7 +65,6 @@ Rules:
     def orchestrate_thread_via_llm(
         self,
         thread_subject: str,
-        pending_tasks: List[Dict[str, Any]],
         actions_payload: List[Dict[str, Any]],
         email_manifest: List[Dict[str, Any]],
         anchor_date: str
@@ -86,7 +72,6 @@ Rules:
         """Queries Gemini using the unified response schema to analyze thread actions and tasks."""
         prompt = self.build_orchestration_prompt(
             thread_subject=thread_subject,
-            pending_tasks=pending_tasks,
             actions_payload=actions_payload,
             email_manifest=email_manifest,
             anchor_date=anchor_date

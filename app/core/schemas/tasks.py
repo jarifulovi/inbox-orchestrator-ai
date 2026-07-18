@@ -16,7 +16,7 @@ class TaskRow(TypedDict):
     thread_id: str  # UUID
     user_id: str  # UUID
     title: str
-    status: str  # 'pending', 'completed', 'resolved', 'dismissed'
+    status: str  # 'pending', 'completed', 'dismissed'
     priority: str  # 'High', 'Medium', 'Low'
     intent_label: str  # 'schedule_meeting', 'reply_requested', 'review_document', 'provide_information', 'make_payment', 'follow_up', 'other'
     action_fingerprint: str
@@ -83,9 +83,6 @@ class UnifiedThreadOrchestrationResponse(BaseModel):
     """Unified Gemini response schema for thread-by-thread features orchestration."""
     task_generations: List[ExtractedTaskBlueprint] = Field(
         description="Task blueprints generated from pre-extracted action items on this thread."
-    )
-    task_resolutions: List[TaskResolution] = Field(
-        description="Resolution status updates for existing pending tasks on this thread."
     )
     thread_summary: str = Field(
         description="A concise, updated 2-3 sentence summary of the entire thread conversation."
