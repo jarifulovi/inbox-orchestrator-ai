@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, BackgroundTasks
+from typing import Optional
+from fastapi import APIRouter, Depends, BackgroundTasks, Query
 from supabase import Client
 
 from app.api.deps.auth import get_current_user
@@ -24,11 +25,12 @@ async def get_me(
 
 @router.get("/google/connect", response_model=GoogleAuthUrlResponse)
 async def connect_google_account(
+    login_hint: Optional[str] = Query(None),
     auth_user: dict = Depends(get_current_user),
     db: Client = Depends(get_supabase_client)
 ):
     service = AuthWebService(db_client=db)
-    return await service.generate_google_auth_url(auth_user=auth_user)
+    return await service.generate_google_auth_url(auth_user=auth_user, login_hint=login_hint)
 
 
 @router.get("/google/callback", response_model=GoogleCallbackResponse)

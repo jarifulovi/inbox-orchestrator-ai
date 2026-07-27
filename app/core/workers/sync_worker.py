@@ -31,7 +31,9 @@ class EmailSyncWorker:
         for account in accounts:
             current_mode = account.get("sync_mode")
             current_status = account.get("sync_status")
-            if current_mode in (None, "INITIAL_BACKFILL", "BACKFILLING") and current_status != "FAILED":
+            has_cursor = bool(account.get("sync_cursor"))
+
+            if current_mode in (None, "INITIAL_BACKFILL", "BACKFILLING") and current_status != "FAILED" and not has_cursor:
                 print(
                     f"[WORKER SKIP] Skipping {account.get('provider_email')} - currently in {current_mode} onboarding phase.")
                 continue

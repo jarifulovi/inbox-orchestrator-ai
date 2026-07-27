@@ -25,7 +25,7 @@ async def main():
             # 2. Run recovery catch-up (Cleans up skipped onboarding or failed inference)
             await recovery_worker.run_recovery_cycle()
             # 3. Run feature-level orchestration (Task Generation & Resolution)
-            # await feature_runner.run_cycle() // current unavailable
+            await feature_runner.run_cycle()
 
         except Exception as e:
             print(f"❌ [CRITICAL ERROR] Worker loop encountered a failure: {e}")

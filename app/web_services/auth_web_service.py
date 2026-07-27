@@ -87,7 +87,7 @@ class AuthWebService:
 
         return {"id": user.id, "email": user.email, "role": user.role}
 
-    async def generate_google_auth_url(self, auth_user: dict) -> GoogleAuthUrlResponse:
+    async def generate_google_auth_url(self, auth_user: dict, login_hint: str | None = None) -> GoogleAuthUrlResponse:
         flow = Flow.from_client_config(
             self.GOOGLE_CLIENT_CONFIG,
             scopes=self.GOOGLE_SCOPES,
@@ -105,13 +105,17 @@ class AuthWebService:
         code_challenge = base64.urlsafe_b64encode(hashed_verifier).decode('utf-8').replace('=', '')
 
         # 💡 FIX 3: Force the custom challenges down into Google's request params
-        auth_url, _ = flow.authorization_url(
-            access_type="offline",
-            prompt="consent",
-            state=state,
-            code_challenge=code_challenge,
-            code_challenge_method="S256"
-        )
+        auth_kwargs = {
+            "access_type": "offline",
+            "prompt": "consent",
+            "state": state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256"
+        }
+        if login_hint:
+            auth_kwargs["login_hint"] = login_hint
+
+        auth_url, _ = flow.authorization_url(**auth_kwargs)
 
         # Store state along with your validated code verifier string (Guaranteed to be populated!)
         self.db.table("oauth_states").insert({
@@ -238,7 +242,8 @@ class AuthWebService:
             provider_email=gmail_profile["email"],
             access_token=credentials.token,
             refresh_token=refresh_token,
-            token_expiry=credentials.expiry
+            token_expiry=credentials.expiry,
+            existing_account=existing_data
         )
         connected_account_id = connected_account.get("id")
         print(f"DEBUG: Successfully upserted account. ID is: {connected_account_id}")
@@ -252,15 +257,15 @@ class AuthWebService:
             .execute()
 
         # ====================================================================
-        # 💡 STEP 8: Queue the Ingestion Layer (Instant non-blocking worker!)
+        # 💡 STEP 8: Queue the Ingestion Layer ONLY for new account connections
+        # (Re-connections preserve existing database state without re-running backfill)
         # ====================================================================
-        # This registers the function to run instantly in the background.
-        # The user gets redirected to the frontend immediately while this runs!
-        sync_worker = EmailSyncWorker(db_client=self.db)
-        background_tasks.add_task(
-            sync_worker.run_initial_backfill,
-            account_id=connected_account_id,  # <-- First positional argument
-        )
+        if not existing_data:
+            sync_worker = EmailSyncWorker(db_client=self.db)
+            background_tasks.add_task(
+                sync_worker.run_initial_backfill,
+                account_id=connected_account_id,
+            )
 
         print("STATE RECEIVED AND VERIFIED:", state)
 
@@ -288,10 +293,24 @@ class AuthWebService:
             provider_email: str,
             access_token: str,
             refresh_token: str | None,
-            token_expiry
+            token_expiry,
+            existing_account: dict | None = None
     ) -> ConnectedAccountRow:
         refresh_token_final = refresh_token or self._get_existing_refresh_token(user_id, provider_email)
         scope_string = " ".join(self.GOOGLE_SCOPES)
+
+        # Preserve existing sync mode & cursor for re-connected accounts so they stay in ACTIVE mode
+        if existing_account:
+            sync_mode = existing_account.get("sync_mode") or "ACTIVE"
+            sync_cursor = existing_account.get("sync_cursor")
+            last_sync_at = existing_account.get("last_sync_at")
+            connected_at = existing_account.get("connected_at") or datetime.now(timezone.utc).isoformat()
+        else:
+            sync_mode = "INITIAL_BACKFILL"
+            sync_cursor = None
+            last_sync_at = None
+            connected_at = datetime.now(timezone.utc).isoformat()
+
         response = self.db.table("connected_accounts").upsert(
             {
                 "user_id": user_id,
@@ -301,11 +320,11 @@ class AuthWebService:
                 "refresh_token": refresh_token_final,
                 "token_expires_at": token_expiry.isoformat() if token_expiry else None,
                 "is_active": True,
-                "sync_mode": "INITIAL_BACKFILL",
+                "sync_mode": sync_mode,
                 "sync_status": "IDLE",
-                "sync_cursor": None,
-                "connected_at": datetime.now(timezone.utc).isoformat(),
-                "last_sync_at": None,
+                "sync_cursor": sync_cursor,
+                "connected_at": connected_at,
+                "last_sync_at": last_sync_at,
                 "scope": scope_string
             },
             on_conflict="user_id,provider,provider_email"

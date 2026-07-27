@@ -80,7 +80,7 @@ class GmailIngestionService:
         }
 
     async def fetch_historical_batch(self, page_token: str | None = None, max_results: int = 50) -> dict:
-        list_params = {'userId': 'me', 'q': 'is:unread', 'maxResults': max_results}
+        list_params = {'userId': 'me', 'q': '-in:chats -in:drafts', 'maxResults': max_results}
         if page_token:
             list_params['pageToken'] = page_token
 
