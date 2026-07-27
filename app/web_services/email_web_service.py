@@ -177,80 +177,142 @@ class EmailWebService:
             offset: int = 0
     ) -> List[Dict[str, Any]]:
         """
-        Fetches parent thread records dynamically, resolves the latest email sender,
-        and returns mock workflow and priority metadata.
+        Fetches parent thread records dynamically, resolves the latest email sender & security trust level,
+        bulk-counts pending tasks, and returns real priority & workflow metadata with safe defaults.
         """
-        # Fetch the account email first (needed for the response)
-        acc_res = self.db.table("connected_accounts").select("provider_email").eq("id", account_id).single().execute()
-        account_email = acc_res.data.get("provider_email") if acc_res.data else ""
+        # 1. Fetch account email
+        account_email = ""
+        try:
+            acc_res = self.db.table("connected_accounts").select("provider_email").eq("id", account_id).single().execute()
+            if acc_res and acc_res.data:
+                account_email = acc_res.data.get("provider_email") or ""
+        except Exception as e:
+            print(f"[THREADS WARNING] Failed to fetch provider_email for connected account {account_id}: {e}")
 
-        # 1. Fetch threads
-        threads_res = self.db.table("email_threads") \
-            .select("*") \
-            .eq("connected_account_id", account_id) \
-            .order("last_message_at", desc=True) \
-            .range(offset, offset + limit - 1) \
-            .execute()
-        
-        threads = threads_res.data or []
+        # 2. Fetch threads
+        try:
+            threads_res = self.db.table("email_threads") \
+                .select("*") \
+                .eq("connected_account_id", account_id) \
+                .order("last_message_at", desc=True) \
+                .range(offset, offset + limit - 1) \
+                .execute()
+            threads = threads_res.data or []
+        except Exception as e:
+            print(f"[THREADS ERROR] Failed to fetch email_threads: {e}")
+            return []
+
         if not threads:
             return []
 
-        thread_ids = [t["id"] for t in threads]
+        thread_ids = [t["id"] for t in threads if t.get("id")]
+        if not thread_ids:
+            return []
 
-        # 2. Fetch all emails in these threads, ordered by received_at DESC to locate the latest sender
-        emails_res = self.db.table("emails") \
-            .select("thread_id, sender, sender_name, received_at") \
-            .in_("thread_id", thread_ids) \
-            .order("received_at", desc=True) \
-            .execute()
+        # 3. Bulk fetch emails for these threads to resolve latest sender info, latest email security_trust_level, and message_count
+        emails_by_thread = {}
+        latest_email_info = {}
+        try:
+            emails_res = self.db.table("emails") \
+                .select("thread_id, sender, sender_name, received_at, ai_metadata") \
+                .in_("thread_id", thread_ids) \
+                .order("received_at", desc=True) \
+                .execute()
 
-        # Build mapping of thread_id -> latest email sender info
-        latest_senders = {}
-        for email in (emails_res.data or []):
-            t_id = email["thread_id"]
-            if t_id not in latest_senders:
-                sender_str = email.get("sender") or ""
-                # Parse sender string
-                name = email.get("sender_name")
-                email_addr = sender_str
-                if not name and "<" in sender_str and ">" in sender_str:
-                    parts = sender_str.split("<")
-                    name = parts[0].strip().replace('"', '')
-                    email_addr = parts[1].split(">")[0].strip()
-                elif not name:
-                    name = sender_str.split("@")[0].strip()
+            for email in (emails_res.data or []):
+                t_id = email.get("thread_id")
+                if not t_id:
+                    continue
 
-                latest_senders[t_id] = {
-                    "sender_name": name or "Unknown",
-                    "sender_email": email_addr or "unknown@email.com"
-                }
+                if t_id not in emails_by_thread:
+                    emails_by_thread[t_id] = []
+                emails_by_thread[t_id].append(email)
 
-        import random
+                # The first email seen per thread is the latest (due to received_at desc ordering)
+                if t_id not in latest_email_info:
+                    sender_str = email.get("sender") or ""
+                    name = email.get("sender_name")
+                    email_addr = sender_str
 
-        # 3. Format response to match frontend thread schema
+                    if not name and "<" in sender_str and ">" in sender_str:
+                        parts = sender_str.split("<")
+                        name = parts[0].strip().replace('"', '')
+                        email_addr = parts[1].split(">")[0].strip()
+                        if not name:
+                            name = email_addr.split("@")[0].strip() if "@" in email_addr else email_addr
+                    elif not name:
+                        name = sender_str.split("@")[0].strip() if "@" in sender_str else sender_str
+
+                    # Extract security_trust_level from ai_metadata -> security_analysis -> security_trust_level
+                    ai_meta = email.get("ai_metadata") or {}
+                    sec_meta = ai_meta.get("security_analysis") or {}
+                    sec_trust_level = sec_meta.get("security_trust_level", "unverified")
+                    if sec_trust_level not in ["unverified", "suspicious", "neutral", "trusted"]:
+                        sec_trust_level = "unverified"
+
+                    latest_email_info[t_id] = {
+                        "sender_name": name or "Unknown",
+                        "sender_email": email_addr or "unknown@email.com",
+                        "security_trust_level": sec_trust_level
+                    }
+        except Exception as e:
+            print(f"[THREADS WARNING] Failed to query emails for threads: {e}")
+
+        # 4. Bulk fetch pending tasks for these threads to resolve tasks_count
+        tasks_counts = {t_id: 0 for t_id in thread_ids}
+        try:
+            tasks_res = self.db.table("tasks") \
+                .select("thread_id, status") \
+                .in_("thread_id", thread_ids) \
+                .execute()
+
+            if tasks_res and tasks_res.data:
+                for task in tasks_res.data:
+                    t_id = task.get("thread_id")
+                    st = task.get("status")
+                    if t_id and st == "pending":
+                        tasks_counts[t_id] = tasks_counts.get(t_id, 0) + 1
+        except Exception as e:
+            print(f"[THREADS WARNING] Failed to query tasks for threads: {e}")
+
+        # 5. Format response to match frontend thread schema
         formatted_threads = []
-        for index, t in enumerate(threads):
-            t_id = t["id"]
-            sender_info = latest_senders.get(t_id, {"sender_name": "Unknown", "sender_email": "unknown@email.com"})
+        VALID_PRIORITIES = {"high", "medium", "low"}
+        VALID_WORKFLOWS = {"needs_action", "awaiting_reply", "informational", "follow_up", "archived"}
 
-            # Generate random but deterministic-looking priorities/statuses for unimplemented attributes
-            # We seed it using the thread ID to make it look stable on refresh!
-            random.seed(hash(t_id))
-            priority = random.choice(["high", "medium", "low"])
-            workflow_status = random.choice(["needs_action", "awaiting_reply", "informational", "follow_up"])
-            security_trust_level = random.choice(["trusted", "neutral", "suspicious", "unverified"])
-            tasks_count = random.choice([0, 1, 2, 3])
-            unread = t.get("unread_messages_count", 0) > 0
-            message_count = random.randint(1, 5)
+        for t in threads:
+            t_id = t["id"]
+            e_info = latest_email_info.get(t_id, {})
+            sender_name = e_info.get("sender_name", "Unknown")
+            sender_email = e_info.get("sender_email", "unknown@email.com")
+            security_trust_level = e_info.get("security_trust_level", "unverified")
+
+            # Priority from email_threads DB column (default: "medium")
+            raw_priority = (t.get("priority") or "").lower()
+            priority = raw_priority if raw_priority in VALID_PRIORITIES else "medium"
+
+            # Workflow status from email_threads DB column (default: "informational")
+            raw_workflow = (t.get("workflow_status") or "").lower()
+            workflow_status = raw_workflow if raw_workflow in VALID_WORKFLOWS else "informational"
+
+            # Tasks count from tasks table
+            tasks_count = tasks_counts.get(t_id, 0)
+
+            # Unread status
+            unread_count = t.get("unread_messages_count", 0)
+            unread = bool(unread_count > 0 or t.get("unread", False))
+
+            # Message count from emails in thread
+            thread_emails = emails_by_thread.get(t_id, [])
+            message_count = len(thread_emails) if thread_emails else 1
 
             formatted_threads.append({
                 "id": t_id,
-                "subject": t.get("subject", "(No Subject)"),
-                "sender_name": sender_info["sender_name"],
-                "sender_email": sender_info["sender_email"],
-                "preview": t.get("snippet", ""),
-                "summary": t.get("summary") or f"This is an automated AI summary of the thread '{t.get('subject')}' to help organize your inbox workspace.",
+                "subject": t.get("subject") or "(No Subject)",
+                "sender_name": sender_name,
+                "sender_email": sender_email,
+                "preview": t.get("snippet") or "",
+                "summary": t.get("summary") or f"This is an automated AI summary of the thread '{t.get('subject') or '(No Subject)'}'.",
                 "priority": priority,
                 "workflow_status": workflow_status,
                 "security_trust_level": security_trust_level,
