@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from supabase import Client
 from app.core.db.supabase import get_supabase_client
@@ -481,3 +482,102 @@ class EmailWebService:
         # 5. Sort by relevance_score descending
         results.sort(key=lambda r: r["relevance_score"], reverse=True)
         return results[offset : offset + limit]
+
+    async def get_user_tasks(
+            self,
+            account_id: str,
+            limit: int = 20,
+            offset: int = 0,
+            priority: Optional[str] = None,
+            status: Optional[str] = None,
+            intent_label: Optional[str] = None,
+            overdue: Optional[bool] = None
+    ) -> Dict[str, Any]:
+        """
+        Fetches a paginated list of tasks for a connected account with filtering,
+        resolves source thread subjects, and computes overall total/pending task counts.
+        """
+        try:
+            # 1. Total and Pending counts for account header stats
+            total_count = 0
+            pending_count = 0
+
+            try:
+                tot_res = self.db.table("tasks").select("id", count="exact").eq("connected_account_id", account_id).execute()
+                total_count = tot_res.count if tot_res.count is not None else len(tot_res.data or [])
+            except Exception as count_err:
+                print(f"[TASKS WARNING] Failed to count total tasks: {count_err}")
+
+            try:
+                pend_res = self.db.table("tasks").select("id", count="exact").eq("connected_account_id", account_id).eq("status", "pending").execute()
+                pending_count = pend_res.count if pend_res.count is not None else len(pend_res.data or [])
+            except Exception as count_err:
+                print(f"[TASKS WARNING] Failed to count pending tasks: {count_err}")
+
+            # 2. Main query building with optional filters (handles "all" / None / empty string)
+            query = self.db.table("tasks").select("*").eq("connected_account_id", account_id)
+
+            if priority and priority.strip() and priority.lower() != "all":
+                query = query.eq("priority", priority.strip().lower())
+
+            if status and status.strip() and status.lower() != "all":
+                query = query.eq("status", status.strip().lower())
+
+            if intent_label and intent_label.strip() and intent_label.lower() != "all":
+                query = query.eq("intent_label", intent_label.strip().lower())
+
+            if overdue:
+                now_iso = datetime.now(timezone.utc).isoformat()
+                query = query.eq("status", "pending").lt("due_date", now_iso)
+
+            query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
+            tasks_res = query.execute()
+
+            raw_tasks = tasks_res.data or []
+            if not raw_tasks:
+                return {
+                    "tasks": [],
+                    "total_count": total_count,
+                    "pending_count": pending_count
+                }
+
+            # 3. Resolve source_thread_subject for thread_ids
+            thread_ids = list({t["thread_id"] for t in raw_tasks if t.get("thread_id")})
+            thread_subject_map = {}
+
+            if thread_ids:
+                try:
+                    threads_res = self.db.table("email_threads").select("id, subject").in_("id", thread_ids).execute()
+                    for thr in (threads_res.data or []):
+                        thread_subject_map[thr["id"]] = thr.get("subject") or "(No Subject)"
+                except Exception as thr_err:
+                    print(f"[TASKS WARNING] Failed to resolve thread subjects: {thr_err}")
+
+            # 4. Format tasks matching frontend Task schema
+            formatted_tasks = []
+            for t in raw_tasks:
+                thread_id = t.get("thread_id") or ""
+                formatted_tasks.append({
+                    "id": t["id"],
+                    "title": t.get("title") or "Untitled Task",
+                    "priority": (t.get("priority") or "medium").lower(),
+                    "status": (t.get("status") or "pending").lower(),
+                    "intent_label": t.get("intent_label") or "other",
+                    "due_date": t.get("due_date"),
+                    "source_thread_id": thread_id,
+                    "source_thread_subject": thread_subject_map.get(thread_id) or "(No Subject)",
+                    "created_at": t.get("created_at") or datetime.now(timezone.utc).isoformat()
+                })
+
+            return {
+                "tasks": formatted_tasks,
+                "total_count": total_count,
+                "pending_count": pending_count
+            }
+        except Exception as e:
+            print(f"[TASKS ERROR] Failed to fetch user tasks: {e}")
+            return {
+                "tasks": [],
+                "total_count": 0,
+                "pending_count": 0
+            }

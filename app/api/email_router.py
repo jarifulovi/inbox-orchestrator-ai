@@ -66,6 +66,30 @@ async def search_emails(
     return {"results": results}
 
 
+@router.get("/tasks")
+async def list_tasks(
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        priority: Optional[str] = Query(None),
+        status: Optional[str] = Query(None),
+        intent_label: Optional[str] = Query(None),
+        overdue: Optional[bool] = Query(None),
+        account_id: str = Depends(get_verified_account_id),
+        db=Depends(get_supabase_client)
+):
+    service = EmailWebService(db)
+    result = await service.get_user_tasks(
+        account_id=account_id,
+        limit=limit,
+        offset=offset,
+        priority=priority,
+        status=status,
+        intent_label=intent_label,
+        overdue=overdue
+    )
+    return result
+
+
 @router.get("/{email_id}")
 async def view_email(
         email_id: str,
@@ -79,6 +103,8 @@ async def view_email(
         raise HTTPException(status_code=404, detail="Email not found")
 
     return email
+
+
 
 
 @router.post("/tasks/{task_id}/status")
