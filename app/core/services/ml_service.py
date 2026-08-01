@@ -297,9 +297,12 @@ class MLEngineService:
         # 1. Compile structured search documents for embedding batch generation
         documents = []
         ordered_emails = []
-        for ml in ml_batch_outputs:
+        for i, ml in enumerate(ml_batch_outputs):
             email_id = ml.get("id")
-            email = email_map.get(email_id)
+            email = email_map.get(email_id) if email_id else None
+            if not email and i < len(email_records):
+                email = email_records[i]
+
             if not email:
                 print(f"[ML WARNING] Email ID {email_id} not found in email_records. Skipping embedding.")
                 continue
@@ -409,9 +412,12 @@ class MLEngineService:
         email_map = {email["id"]: email for email in email_records if email.get("id")}
 
         fact_rows = []
-        for ml in ml_batch_outputs:
+        for i, ml in enumerate(ml_batch_outputs):
             email_id = ml.get("id")
-            email = email_map.get(email_id)
+            email = email_map.get(email_id) if email_id else None
+            if not email and i < len(email_records):
+                email = email_records[i]
+
             if not email:
                 continue
 

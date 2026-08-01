@@ -196,17 +196,22 @@ class EmailSyncWorker:
                 # CRITICAL CHANGE 2: Isolate ML inference inside a safe try/except block
                 if not skip_ml:
                     try:
+                        emails_data = email_save_res.data or []
+                        for email_record in emails_data:
+                            email_record["user_id"] = account.get("user_id")
+
+                        # Bind database primary key UUIDs back to email nodes for ML mapping
+                        gmail_to_db_id = {row["gmail_message_id"]: row["id"] for row in emails_data if row.get("gmail_message_id")}
+                        for email in emails_to_process:
+                            if email.get("gmail_message_id") in gmail_to_db_id:
+                                email["id"] = gmail_to_db_id[email["gmail_message_id"]]
+
                         print(f"[ML] Running batch inference on {len(emails_to_process)} emails...")
                         self.ml_engine = self._get_or_init_ml_engine()
                         ml_batch_outputs = self.ml_engine.run_batch_inference(
                             email_nodes=emails_to_process,
                             historical_context=[]
                         )
-
-                        # Execute ML persistence
-                        emails_data = email_save_res.data or []
-                        for email_record in emails_data:
-                            email_record["user_id"] = account.get("user_id")
 
                         await self.ml_engine.persist_ml_outputs(
                             self.supabase,
