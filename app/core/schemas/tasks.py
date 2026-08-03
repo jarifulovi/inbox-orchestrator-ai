@@ -11,10 +11,11 @@ class TaskRow(TypedDict):
     Direct 1:1 mapping of your Database Task record structure.
     Used for type safety when extracting data via repositories.
     """
-    email_fact_id: str  # UUID
-    email_id: str  # UUID
-    thread_id: str  # UUID
+    email_fact_id: Optional[str]  # UUID, null for manual tasks or ON DELETE SET NULL
+    email_id: str  # UUID, required email reference
+    thread_id: str  # UUID, required thread reference
     user_id: str  # UUID
+    source: str  # 'system' (default) or 'manual'
     title: str
     status: str  # 'pending', 'completed', 'dismissed'
     priority: str  # 'High', 'Medium', 'Low'

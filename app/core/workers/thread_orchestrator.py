@@ -103,7 +103,7 @@ class ThreadOrchestrator:
 
         # 5. Partition tasks & facts
         pending_tasks = [t for t in thread_tasks if t["status"] == "pending"]
-        tasked_fact_ids = {t["email_fact_id"] for t in thread_tasks if t["email_fact_id"]}
+        tasked_fact_ids = {t["email_fact_id"] for t in thread_tasks if t.get("email_fact_id")}
         facts_to_process = [f for f in facts if f["id"] not in tasked_fact_ids]
 
         # -------------------------------------------------------------
@@ -241,6 +241,7 @@ class ThreadOrchestrator:
                     "thread_id": thread_id,
                     "user_id": user_id,
                     "connected_account_id": account_id,
+                    "source": "system",
                     "title": blueprint.title,
                     "status": "pending",
                     "priority": blueprint.priority,

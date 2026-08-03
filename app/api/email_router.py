@@ -74,6 +74,7 @@ async def list_tasks(
         status: Optional[str] = Query(None),
         intent_label: Optional[str] = Query(None),
         overdue: Optional[bool] = Query(None),
+        source: Optional[str] = Query(None),
         account_id: str = Depends(get_verified_account_id),
         db=Depends(get_supabase_client)
 ):
@@ -85,7 +86,8 @@ async def list_tasks(
         priority=priority,
         status=status,
         intent_label=intent_label,
-        overdue=overdue
+        overdue=overdue,
+        source=source
     )
     return result
 

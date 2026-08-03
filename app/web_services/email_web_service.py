@@ -491,7 +491,8 @@ class EmailWebService:
             priority: Optional[str] = None,
             status: Optional[str] = None,
             intent_label: Optional[str] = None,
-            overdue: Optional[bool] = None
+            overdue: Optional[bool] = None,
+            source: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Fetches a paginated list of tasks for a connected account with filtering,
@@ -526,6 +527,9 @@ class EmailWebService:
             if intent_label and intent_label.strip() and intent_label.lower() != "all":
                 query = query.eq("intent_label", intent_label.strip().lower())
 
+            if source and source.strip() and source.lower() != "all":
+                query = query.eq("source", source.strip().lower())
+
             if overdue:
                 now_iso = datetime.now(timezone.utc).isoformat()
                 query = query.eq("status", "pending").lt("due_date", now_iso)
@@ -559,6 +563,8 @@ class EmailWebService:
                 thread_id = t.get("thread_id") or ""
                 formatted_tasks.append({
                     "id": t["id"],
+                    "source": t.get("source") or "system",
+                    "email_fact_id": t.get("email_fact_id"),
                     "title": t.get("title") or "Untitled Task",
                     "priority": (t.get("priority") or "medium").lower(),
                     "status": (t.get("status") or "pending").lower(),
