@@ -5,6 +5,7 @@ from app.web_services.email_web_service import EmailWebService
 from app.api.deps.account import get_verified_account_id
 from app.core.db.supabase import get_supabase_client
 from app.api.deps.auth import get_current_user
+from app.schemas.task_schemas import TaskCreatePayload, TaskUpdatePayload
 
 router = APIRouter(prefix="/api/emails", tags=["emails"])
 
@@ -109,39 +110,82 @@ async def view_email(
 
 
 
-@router.post("/tasks/{task_id}/status")
-async def update_task_status(
-        task_id: str,
-        payload: dict,
+@router.post("/tasks")
+async def create_task(
+        payload: TaskCreatePayload,
+        account_id: Optional[str] = Query(None, description="Connected account ID"),
         auth_user: dict = Depends(get_current_user),
         db=Depends(get_supabase_client)
 ):
-    status = payload.get("status")
-    if status not in ("completed", "dismissed"):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid status. Only 'completed' or 'dismissed' are allowed for manual updates."
-        )
-
+    service = EmailWebService(db)
     user_id = auth_user.get("id")
+    target_account_id = account_id or payload.account_id
 
-    # 1. Verify ownership: check that the task exists and belongs to the authenticated user
+    if target_account_id:
+        acc_res = db.table("connected_accounts").select("id").eq("id", target_account_id).eq("user_id", user_id).execute()
+        if not acc_res.data:
+            raise HTTPException(status_code=403, detail="Access denied or connected account does not belong to user")
+
     try:
-        task_res = db.table("tasks").select("id, user_id").eq("id", task_id).single().execute()
-        task = task_res.data
-    except Exception:
-        task = None
+        task = await service.create_manual_task(
+            user_id=user_id,
+            account_id=target_account_id,
+            title=payload.title,
+            email_id=payload.email_id,
+            thread_id=payload.thread_id,
+            priority=payload.priority,
+            intent_label=payload.intent_label,
+            due_date=payload.due_date
+        )
+        return task
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e).strip("'\""))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e).strip("'\""))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e).strip("'\""))
 
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found or access denied")
-    
-    if task["user_id"] != user_id:
-        raise HTTPException(status_code=403, detail="Access denied. You do not own this task.")
 
-    # 2. Update status in tasks table
-    db.table("tasks").update({
-        "status": status,
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }).eq("id", task_id).execute()
+@router.patch("/tasks/{task_id}")
+async def update_task(
+        task_id: str,
+        payload: TaskUpdatePayload,
+        auth_user: dict = Depends(get_current_user),
+        db=Depends(get_supabase_client)
+):
+    service = EmailWebService(db)
+    user_id = auth_user.get("id")
+    try:
+        updated_task = await service.update_user_task(
+            task_id=task_id,
+            user_id=user_id,
+            title=payload.title,
+            status=payload.status,
+            priority=payload.priority,
+            intent_label=payload.intent_label,
+            due_date=payload.due_date
+        )
+        return updated_task
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    return {"status": "success", "task_id": task_id, "new_status": status}
+
+@router.delete("/tasks/{task_id}")
+async def delete_task(
+        task_id: str,
+        auth_user: dict = Depends(get_current_user),
+        db=Depends(get_supabase_client)
+):
+    service = EmailWebService(db)
+    user_id = auth_user.get("id")
+    try:
+        res = await service.delete_user_task(task_id=task_id, user_id=user_id)
+        return res
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))

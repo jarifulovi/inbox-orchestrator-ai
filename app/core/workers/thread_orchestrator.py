@@ -244,7 +244,7 @@ class ThreadOrchestrator:
                     "source": "system",
                     "title": blueprint.title,
                     "status": "pending",
-                    "priority": blueprint.priority,
+                    "priority": (blueprint.priority or "medium").lower(),
                     "intent_label": blueprint.intent_label,
                     "action_fingerprint": fingerprint,
                     "due_date": blueprint.due_date_iso

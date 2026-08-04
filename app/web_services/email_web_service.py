@@ -1,4 +1,5 @@
 import base64
+import uuid
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from supabase import Client
@@ -519,7 +520,8 @@ class EmailWebService:
             query = self.db.table("tasks").select("*").eq("connected_account_id", account_id)
 
             if priority and priority.strip() and priority.lower() != "all":
-                query = query.eq("priority", priority.strip().lower())
+                p_val = priority.strip().lower()
+                query = query.in_("priority", [p_val, p_val.capitalize(), p_val.upper()])
 
             if status and status.strip() and status.lower() != "all":
                 query = query.eq("status", status.strip().lower())
@@ -587,3 +589,185 @@ class EmailWebService:
                 "total_count": 0,
                 "pending_count": 0
             }
+
+    async def create_manual_task(
+            self,
+            user_id: str,
+            account_id: Optional[str],
+            title: str,
+            email_id: str,
+            thread_id: Optional[str] = None,
+            priority: str = "medium",
+            intent_label: str = "other",
+            due_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Creates a new manual task linked to a target email and thread.
+        """
+        # 1. Verify target email access and retrieve thread_id if needed
+        email_res = self.db.table("emails").select("id, thread_id, connected_account_id").eq("id", email_id).execute()
+        email_data = email_res.data or []
+        if not email_data:
+            raise KeyError(f"Target email {email_id} not found.")
+
+        target_email = email_data[0]
+        email_account_id = target_email.get("connected_account_id")
+
+        if account_id and email_account_id != account_id:
+            raise PermissionError("Access denied to target email account.")
+
+        resolved_account_id = account_id or email_account_id
+        if not resolved_account_id:
+            raise ValueError("Could not resolve connected_account_id for task.")
+
+        # Verify that resolved_account_id belongs to user_id
+        acc_res = self.db.table("connected_accounts").select("id").eq("id", resolved_account_id).eq("user_id", user_id).execute()
+        if not acc_res.data:
+            raise PermissionError("Access denied: Connected account does not belong to user.")
+
+        resolved_thread_id = thread_id or target_email.get("thread_id")
+        if not resolved_thread_id:
+            raise ValueError("Could not resolve thread_id from target email.")
+
+        # 2. Build task record payload
+        fingerprint = f"manual_{user_id}_{uuid.uuid4().hex}"
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        task_payload = {
+            "source": "manual",
+            "email_fact_id": None,
+            "email_id": email_id,
+            "thread_id": resolved_thread_id,
+            "user_id": user_id,
+            "connected_account_id": resolved_account_id,
+            "title": title.strip(),
+            "status": "pending",
+            "priority": (priority or "medium").strip().lower(),
+            "intent_label": (intent_label or "other").strip().lower(),
+            "action_fingerprint": fingerprint,
+            "due_date": due_date,
+            "created_at": now_iso,
+            "updated_at": now_iso
+        }
+
+        # 3. Insert record into database
+        insert_res = self.db.table("tasks").insert(task_payload).execute()
+        new_task = (insert_res.data or [task_payload])[0]
+
+        # 4. Resolve source_thread_subject for response
+        thread_subject = "(No Subject)"
+        try:
+            thr_res = self.db.table("email_threads").select("subject").eq("id", resolved_thread_id).execute()
+            if thr_res.data:
+                thread_subject = thr_res.data[0].get("subject") or "(No Subject)"
+        except Exception:
+            pass
+
+        return {
+            "id": new_task.get("id", ""),
+            "source": "manual",
+            "email_fact_id": None,
+            "title": new_task["title"],
+            "priority": new_task["priority"],
+            "status": new_task["status"],
+            "intent_label": new_task["intent_label"],
+            "due_date": new_task.get("due_date"),
+            "source_thread_id": resolved_thread_id,
+            "source_thread_subject": thread_subject,
+            "created_at": new_task.get("created_at", now_iso)
+        }
+
+    async def update_user_task(
+            self,
+            task_id: str,
+            user_id: str,
+            title: Optional[str] = None,
+            status: Optional[str] = None,
+            priority: Optional[str] = None,
+            intent_label: Optional[str] = None,
+            due_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Updates allowed fields (title, status, priority, intent_label, due_date) of an existing task.
+        """
+        # 1. Fetch task and check ownership
+        task_res = self.db.table("tasks").select("*").eq("id", task_id).execute()
+        tasks = task_res.data or []
+        if not tasks:
+            raise KeyError("Task not found.")
+
+        task = tasks[0]
+        if task.get("user_id") != user_id:
+            raise PermissionError("Access denied. You do not own this task.")
+
+        # 2. Prepare update payload
+        updates: Dict[str, Any] = {
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        if title is not None and title.strip():
+            updates["title"] = title.strip()
+
+        if status is not None and status.strip():
+            st = status.strip().lower()
+            if st not in ("pending", "completed", "dismissed"):
+                raise ValueError("Invalid status. Must be 'pending', 'completed', or 'dismissed'.")
+            updates["status"] = st
+
+        if priority is not None and priority.strip():
+            prio = priority.strip().lower()
+            if prio not in ("high", "medium", "low"):
+                raise ValueError("Invalid priority. Must be 'high', 'medium', or 'low'.")
+            updates["priority"] = prio
+
+        if intent_label is not None and intent_label.strip():
+            updates["intent_label"] = intent_label.strip().lower()
+
+        if due_date is not None:
+            updates["due_date"] = due_date
+
+        # 3. Apply updates
+        upd_res = self.db.table("tasks").update(updates).eq("id", task_id).execute()
+        updated_task = (upd_res.data or [task])[0]
+
+        # 4. Resolve source_thread_subject for response
+        thread_id = updated_task.get("thread_id") or ""
+        thread_subject = "(No Subject)"
+        if thread_id:
+            try:
+                thr_res = self.db.table("email_threads").select("subject").eq("id", thread_id).execute()
+                if thr_res.data:
+                    thread_subject = thr_res.data[0].get("subject") or "(No Subject)"
+            except Exception:
+                pass
+
+        return {
+            "id": updated_task["id"],
+            "source": updated_task.get("source") or "system",
+            "email_fact_id": updated_task.get("email_fact_id"),
+            "title": updated_task.get("title") or "Untitled Task",
+            "priority": (updated_task.get("priority") or "medium").lower(),
+            "status": (updated_task.get("status") or "pending").lower(),
+            "intent_label": updated_task.get("intent_label") or "other",
+            "due_date": updated_task.get("due_date"),
+            "source_thread_id": thread_id,
+            "source_thread_subject": thread_subject,
+            "created_at": updated_task.get("created_at") or datetime.now(timezone.utc).isoformat()
+        }
+
+    async def delete_user_task(self, task_id: str, user_id: str) -> Dict[str, Any]:
+        """
+        Deletes a task (system or manual) owned by the user.
+        """
+        # 1. Fetch task and check ownership
+        task_res = self.db.table("tasks").select("id, user_id").eq("id", task_id).execute()
+        tasks = task_res.data or []
+        if not tasks:
+            raise KeyError("Task not found.")
+
+        if tasks[0].get("user_id") != user_id:
+            raise PermissionError("Access denied. You do not own this task.")
+
+        # 2. Delete task
+        self.db.table("tasks").delete().eq("id", task_id).execute()
+        return {"status": "success", "task_id": task_id}
