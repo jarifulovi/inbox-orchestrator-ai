@@ -126,11 +126,15 @@ class EmailWebService:
 
     def _extract_body_text(self, parts: list) -> str:
         """
-        Helper function to iterate over Gmail payload parts and decode readable text.
+        Helper function to iterate over Gmail payload parts and decode readable text,
+        explicitly preferring text/html content to preserve layout structure.
         """
+        html_content, text_content = self._extract_body_parts(parts)
+        return html_content or text_content
+
+    def _extract_body_parts(self, parts: list) -> tuple:
         html_content = ""
         text_content = ""
-
         for part in parts:
             mime_type = part.get("mimeType", "")
             body_data = part.get("body", {}).get("data", "")
@@ -139,12 +143,14 @@ class EmailWebService:
                 decoded = base64.urlsafe_b64decode(body_data.encode("utf-8")).decode("utf-8", errors="ignore")
                 if mime_type == "text/html":
                     html_content = decoded
-                elif mime_type == "text/plain":
+                elif mime_type == "text/plain" and not text_content:
                     text_content = decoded
 
             if "parts" in part:
-                sub_body = self._extract_body_text(part["parts"])
-                if sub_body:
-                    return sub_body
+                sub_html, sub_text = self._extract_body_parts(part["parts"])
+                if sub_html:
+                    html_content = sub_html
+                if sub_text and not text_content:
+                    text_content = sub_text
 
-        return html_content or text_content
+        return html_content, text_content
