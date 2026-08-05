@@ -32,11 +32,21 @@ async def list_emails(
 async def list_threads(
         limit: int = Query(20, ge=1, le=100),
         offset: int = Query(0, ge=0),
+        workflow_status: Optional[str] = Query(None),
+        priority: Optional[str] = Query(None),
+        q: Optional[str] = Query(None),
         account_id: str = Depends(get_verified_account_id),
         db=Depends(get_supabase_client)
 ):
     service = ThreadWebService(db)
-    threads = await service.get_user_threads(account_id, limit, offset)
+    threads = await service.get_user_threads(
+        account_id=account_id,
+        limit=limit,
+        offset=offset,
+        workflow_status=workflow_status,
+        priority=priority,
+        q=q
+    )
     return {"threads": threads}
 
 

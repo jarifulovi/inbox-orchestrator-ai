@@ -19,11 +19,15 @@ class ThreadWebService:
             self,
             account_id: str,
             limit: int = 20,
-            offset: int = 0
+            offset: int = 0,
+            workflow_status: Optional[str] = None,
+            priority: Optional[str] = None,
+            q: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Fetches parent thread records dynamically, resolves the latest email sender & security trust level,
-        bulk-counts pending tasks, and returns real priority & workflow metadata with safe defaults.
+        Fetches parent thread records dynamically with status/priority/keyword filtering,
+        resolves the latest email sender & security trust level, bulk-counts pending tasks,
+        and returns real priority & workflow metadata with safe defaults.
         """
         # 1. Fetch account email
         account_email = ""
@@ -34,12 +38,23 @@ class ThreadWebService:
         except Exception as e:
             print(f"[THREADS WARNING] Failed to fetch provider_email for connected account {account_id}: {e}")
 
-        # 2. Fetch threads
+        # 2. Fetch threads with filters
         try:
-            threads_res = self.db.table("email_threads") \
+            query = self.db.table("email_threads") \
                 .select("*") \
-                .eq("connected_account_id", account_id) \
-                .order("last_message_at", desc=True) \
+                .eq("connected_account_id", account_id)
+
+            if workflow_status and workflow_status.strip() and workflow_status.strip().lower() != "all":
+                query = query.eq("workflow_status", workflow_status.strip().lower())
+
+            if priority and priority.strip() and priority.strip().lower() != "all":
+                query = query.eq("priority", priority.strip().lower())
+
+            if q and q.strip():
+                keyword = q.strip()
+                query = query.ilike("subject", f"%{keyword}%")
+
+            threads_res = query.order("last_message_at", desc=True) \
                 .range(offset, offset + limit - 1) \
                 .execute()
             threads = threads_res.data or []
