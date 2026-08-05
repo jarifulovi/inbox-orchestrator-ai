@@ -26,7 +26,7 @@ class EmailWebService:
         Fetches user email records with optional keyword filtering.
         """
         query = self.db.table(self.table) \
-            .select("id, thread_id, connected_account_id, sender, sender_name, subject, snippet, is_read, received_at, category") \
+            .select("id, thread_id, connected_account_id, sender, sender_name, subject, snippet, raw_payload->labelIds, received_at, category") \
             .eq("connected_account_id", account_id)
 
         if q and q.strip():
@@ -46,6 +46,11 @@ class EmailWebService:
             if not sender_name:
                 sender_name = sender_email.split("<")[0].strip() if "<" in sender_email else sender_email
 
+            label_ids = e.get("labelIds") or []
+            is_read = True
+            if isinstance(label_ids, list) and "UNREAD" in label_ids:
+                is_read = False
+
             formatted_emails.append({
                 "id": e["id"],
                 "thread_id": e.get("thread_id"),
@@ -54,7 +59,7 @@ class EmailWebService:
                 "sender_name": sender_name,
                 "subject": e.get("subject") or "(No Subject)",
                 "snippet": e.get("snippet") or "",
-                "is_read": e.get("is_read", False),
+                "is_read": is_read,
                 "received_at": e.get("received_at"),
                 "category": e.get("category") or "Primary"
             })
@@ -118,13 +123,6 @@ class EmailWebService:
             data["body"] = self._extract_body_text(parts)
 
         return data
-
-    async def update_read_status(self, email_id: str, account_id: str, is_read: bool) -> bool:
-        """
-        Updates the read state of an email.
-        """
-        self.db.table(self.table).update({"is_read": is_read}).eq("id", email_id).eq("connected_account_id", account_id).execute()
-        return True
 
     def _extract_body_text(self, parts: list) -> str:
         """

@@ -19,12 +19,12 @@ router = APIRouter(prefix="/api/emails", tags=["emails"])
 async def list_emails(
         limit: int = Query(20, ge=1, le=100),
         offset: int = Query(0, ge=0),
-        classification: Optional[str] = None,
+        q: Optional[str] = Query(None, description="Search query"),
         account_id: str = Depends(get_verified_account_id),
         db=Depends(get_supabase_client)
 ):
     service = EmailWebService(db)
-    emails = await service.get_user_emails(account_id, limit, offset, classification)
+    emails = await service.get_user_emails(account_id, limit, offset, q)
     return {"emails": emails}
 
 
@@ -81,6 +81,7 @@ async def list_tasks(
         intent_label: Optional[str] = Query(None),
         overdue: Optional[bool] = Query(None),
         source: Optional[str] = Query(None),
+        email_id: Optional[str] = Query(None),
         account_id: str = Depends(get_verified_account_id),
         auth_user: dict = Depends(get_current_user),
         db=Depends(get_supabase_client)
@@ -96,7 +97,8 @@ async def list_tasks(
         status=status,
         intent_label=intent_label,
         overdue=overdue,
-        source=source
+        source=source,
+        email_id=email_id
     )
     return result
 
