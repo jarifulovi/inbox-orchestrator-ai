@@ -1,6 +1,29 @@
+from typing import List, TypedDict, Optional, Dict, Any, Set
 from datetime import datetime
-from typing import List, TypedDict, Optional, Dict, Any
 from pydantic import BaseModel, Field
+
+# =====================================================================
+# TASK TAXONOMY CONSTANTS
+# =====================================================================
+# Task Status: 'pending' (active), 'completed' (resolved), 'dismissed' (closed without action)
+VALID_TASK_STATUSES: Set[str] = {"pending", "completed", "dismissed"}
+
+# Task Source: 'system' (extracted by Gemini AI worker), 'manual' (created by user)
+VALID_TASK_SOURCES: Set[str] = {"system", "manual"}
+
+# Task Priority: 'high', 'medium', 'low' (default: 'medium')
+VALID_TASK_PRIORITIES: Set[str] = {"high", "medium", "low"}
+
+# Task Intent Label: Categorizes action type
+VALID_INTENT_LABELS: Set[str] = {
+    "schedule_meeting",
+    "reply_requested",
+    "review_document",
+    "provide_information",
+    "make_payment",
+    "follow_up",
+    "other",
+}
 
 # =====================================================================
 # 1. INTERNAL DATABASE & WORKER SCHEMAS (TypedDict - Zero Performance Cost)
@@ -8,17 +31,16 @@ from pydantic import BaseModel, Field
 
 class TaskRow(TypedDict):
     """
-    Direct 1:1 mapping of your Database Task record structure.
-    Used for type safety when extracting data via repositories.
+    Direct 1:1 mapping of Database Task record structure.
     """
     email_fact_id: Optional[str]  # UUID, null for manual tasks or ON DELETE SET NULL
     email_id: str  # UUID, required email reference
     thread_id: str  # UUID, required thread reference
     user_id: str  # UUID
-    source: str  # 'system' (default) or 'manual'
+    source: str  # 'system' (AI worker extracted) or 'manual' (user created)
     title: str
     status: str  # 'pending', 'completed', 'dismissed'
-    priority: str  # 'High', 'Medium', 'Low'
+    priority: str  # 'high', 'medium', 'low'
     intent_label: str  # 'schedule_meeting', 'reply_requested', 'review_document', 'provide_information', 'make_payment', 'follow_up', 'other'
     action_fingerprint: str
     enriched_context: Dict[str, Any]  # JSONB mapping
