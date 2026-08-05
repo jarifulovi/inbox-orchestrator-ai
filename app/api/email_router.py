@@ -1,7 +1,12 @@
 from typing import Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, HTTPException
-from app.web_services.email_web_service import EmailWebService
+from app.web_services import (
+    EmailWebService,
+    ThreadWebService,
+    SearchWebService,
+    TaskWebService,
+)
 from app.api.deps.account import get_verified_account_id
 from app.core.db.supabase import get_supabase_client
 from app.api.deps.auth import get_current_user
@@ -30,7 +35,7 @@ async def list_threads(
         account_id: str = Depends(get_verified_account_id),
         db=Depends(get_supabase_client)
 ):
-    service = EmailWebService(db)
+    service = ThreadWebService(db)
     threads = await service.get_user_threads(account_id, limit, offset)
     return {"threads": threads}
 
@@ -40,7 +45,7 @@ async def sync_inbox(
         account_id: str = Depends(get_verified_account_id),
         db=Depends(get_supabase_client)
 ):
-    service = EmailWebService(db)
+    service = ThreadWebService(db)
     await service.sync_user_inbox(account_id)
     return {"status": "success"}
 
@@ -56,7 +61,7 @@ async def search_emails(
 ):
     if not q or len(q.strip()) < 3:
         return {"results": []}
-    service = EmailWebService(db)
+    service = SearchWebService(db)
     results = await service.smart_search(
         account_id=account_id,
         query=q,
@@ -77,10 +82,13 @@ async def list_tasks(
         overdue: Optional[bool] = Query(None),
         source: Optional[str] = Query(None),
         account_id: str = Depends(get_verified_account_id),
+        auth_user: dict = Depends(get_current_user),
         db=Depends(get_supabase_client)
 ):
-    service = EmailWebService(db)
+    service = TaskWebService(db)
+    user_id = auth_user.get("id")
     result = await service.get_user_tasks(
+        user_id=user_id,
         account_id=account_id,
         limit=limit,
         offset=offset,
@@ -108,8 +116,6 @@ async def view_email(
     return email
 
 
-
-
 @router.post("/tasks")
 async def create_task(
         payload: TaskCreatePayload,
@@ -117,7 +123,7 @@ async def create_task(
         auth_user: dict = Depends(get_current_user),
         db=Depends(get_supabase_client)
 ):
-    service = EmailWebService(db)
+    service = TaskWebService(db)
     user_id = auth_user.get("id")
     target_account_id = account_id or payload.account_id
 
@@ -153,7 +159,7 @@ async def update_task(
         auth_user: dict = Depends(get_current_user),
         db=Depends(get_supabase_client)
 ):
-    service = EmailWebService(db)
+    service = TaskWebService(db)
     user_id = auth_user.get("id")
     try:
         updated_task = await service.update_user_task(
@@ -180,7 +186,7 @@ async def delete_task(
         auth_user: dict = Depends(get_current_user),
         db=Depends(get_supabase_client)
 ):
-    service = EmailWebService(db)
+    service = TaskWebService(db)
     user_id = auth_user.get("id")
     try:
         res = await service.delete_user_task(task_id=task_id, user_id=user_id)

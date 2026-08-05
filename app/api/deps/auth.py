@@ -1,6 +1,6 @@
 from fastapi import Depends, Header, HTTPException
 from app.core.db.supabase import get_supabase_client
-from app.web_services.auth_web_service import AuthWebService
+from app.web_services.auth import AuthWebService
 
 
 def get_current_user(
