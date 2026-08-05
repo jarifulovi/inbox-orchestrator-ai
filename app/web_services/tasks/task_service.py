@@ -10,6 +10,7 @@ from app.core.schemas.tasks import (
     VALID_TASK_PRIORITIES,
     VALID_INTENT_LABELS,
 )
+from app.web_services.tasks.thread_workflow_synchronizer import ThreadWorkflowSynchronizer
 
 
 class TaskWebService:
@@ -20,6 +21,7 @@ class TaskWebService:
 
     def __init__(self, db_client: Optional[Client] = None):
         self.db = db_client or get_supabase_client()
+        self.synchronizer = ThreadWorkflowSynchronizer(self.db)
 
     async def get_user_tasks(
             self,
@@ -224,11 +226,8 @@ class TaskWebService:
         insert_res = self.db.table("tasks").insert(task_payload).execute()
         new_task = (insert_res.data or [task_payload])[0]
 
-        # 4. Auto-sync associated thread workflow_status to 'needs_action'
-        try:
-            self.db.table("email_threads").update({"workflow_status": "needs_action"}).eq("id", resolved_thread_id).execute()
-        except Exception as e:
-            print(f"[TASK WARNING] Failed to sync thread workflow status: {e}")
+        # 4. Auto-sync associated thread workflow_status (raises Exception on failure to ensure atomic operation)
+        await self.synchronizer.sync_thread_status(resolved_thread_id, resolved_account_id)
 
         # 5. Resolve source_thread_subject for response
         thread_subject = "(No Subject)"
@@ -265,7 +264,7 @@ class TaskWebService:
     ) -> Dict[str, Any]:
         """
         Updates an existing task record (title, status, priority, intent_label, due_date)
-        and synchronizes parent thread workflow_status if tasks are completed/reopened.
+        and synchronizes parent thread workflow_status based on remaining tasks and email SLA.
         """
         existing_res = self.db.table("tasks").select("*").eq("id", task_id).execute()
         existing_data = existing_res.data or []
@@ -297,20 +296,11 @@ class TaskWebService:
         upd_res = self.db.table("tasks").update(updates).eq("id", task_id).execute()
         updated_task = (upd_res.data or [task])[0]
 
-        # Sync thread workflow status if task status changed
+        # Sync thread workflow status - raises Exception on failure to ensure task update integrity
         thread_id = updated_task.get("thread_id")
-        if thread_id and "status" in updates:
-            new_status = updates["status"]
-            try:
-                if new_status == "pending":
-                    self.db.table("email_threads").update({"workflow_status": "needs_action"}).eq("id", thread_id).execute()
-                elif new_status in ("completed", "dismissed"):
-                    rem_res = self.db.table("tasks").select("id").eq("thread_id", thread_id).eq("status", "pending").execute()
-                    rem_pending = rem_res.data or []
-                    if len(rem_pending) == 0:
-                        self.db.table("email_threads").update({"workflow_status": "informational"}).eq("id", thread_id).execute()
-            except Exception as e:
-                print(f"[TASK WARNING] Failed to sync thread workflow status on task update: {e}")
+        account_id = updated_task.get("connected_account_id")
+        if thread_id:
+            await self.synchronizer.sync_thread_status(thread_id, account_id)
 
         # Resolve thread subject
         thread_subject = "(No Subject)"
@@ -340,7 +330,7 @@ class TaskWebService:
         """
         Deletes a task record and updates parent thread workflow status if no pending tasks remain.
         """
-        existing_res = self.db.table("tasks").select("id, user_id, thread_id, status").eq("id", task_id).execute()
+        existing_res = self.db.table("tasks").select("id, user_id, thread_id, connected_account_id, status").eq("id", task_id).execute()
         existing_data = existing_res.data or []
         if not existing_data:
             raise KeyError(f"Task {task_id} not found.")
@@ -350,15 +340,10 @@ class TaskWebService:
             raise PermissionError("Access denied to target task.")
 
         thread_id = task.get("thread_id")
+        account_id = task.get("connected_account_id")
         self.db.table("tasks").delete().eq("id", task_id).execute()
 
         if thread_id:
-            try:
-                rem_res = self.db.table("tasks").select("id").eq("thread_id", thread_id).eq("status", "pending").execute()
-                rem_pending = rem_res.data or []
-                if len(rem_pending) == 0:
-                    self.db.table("email_threads").update({"workflow_status": "informational"}).eq("id", thread_id).execute()
-            except Exception as e:
-                print(f"[TASK WARNING] Failed to sync thread workflow status on task delete: {e}")
+            await self.synchronizer.sync_thread_status(thread_id, account_id)
 
         return True
