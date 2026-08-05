@@ -50,6 +50,20 @@ async def list_threads(
     return {"threads": threads}
 
 
+@router.get("/threads/{thread_id}")
+async def get_thread_details(
+        thread_id: str,
+        account_id: str = Depends(get_verified_account_id),
+        db=Depends(get_supabase_client)
+):
+    service = ThreadWebService(db)
+    try:
+        details = await service.get_thread_details(thread_id, account_id)
+        return details
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found.")
+
+
 @router.post("/sync")
 async def sync_inbox(
         account_id: str = Depends(get_verified_account_id),
