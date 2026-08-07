@@ -39,10 +39,11 @@ class ThreadOrchestrator:
         try:
             # 0. Execute single batch update for SLA-breached threads (>48h awaiting_reply -> follow_up)
             await self.update_sla_breached_threads()
-            # 1. Fetch up to 50 active threads that need processing
+            # 1. Fetch up to 50 active threads that need processing (excluding archived)
             threads_res = self.db.table("email_threads") \
                 .select("*") \
                 .eq("is_processed", False) \
+                .neq("workflow_status", "archived") \
                 .order("last_message_at") \
                 .limit(50) \
                 .execute()

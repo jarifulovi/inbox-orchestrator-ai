@@ -50,7 +50,7 @@ class TaskRow(TypedDict):
 class TaskUpdatePayload(TypedDict):
     """Payload passed internally to repositories to execute a task state transition."""
     id: str  # UUID
-    status: str  # 'completed' or 'dismissed' (if resolved by worker)
+    status: str  # 'completed' or 'dismissed' (manually resolved by user)
     enriched_context: Dict[str, Any]  # To append resolution_summary or log details
 
 
