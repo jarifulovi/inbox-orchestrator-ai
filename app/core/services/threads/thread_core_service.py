@@ -31,7 +31,7 @@ for sync cycles without new unprocessed email facts.
 ================================================================================
 """
 
-class ThreadOrchestrationService:
+class ThreadCoreService:
     def __init__(self, llm_client: LLMClient):
         self.llm = llm_client
 
@@ -107,7 +107,6 @@ Instructions:
 
         # 3. Rule-based expects reply:
         # Check if the latest message was from user, and if there's a question mark in the snippet
-        # (This is a lightweight rule-based approximation)
         last_user_email_expects_reply = False
         if "?" in latest_snippet:
             last_user_email_expects_reply = True

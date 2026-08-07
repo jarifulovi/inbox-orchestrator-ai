@@ -1,9 +1,9 @@
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.core.db.supabase import get_supabase_client
 from app.core.llm.client import LLMClient
 from app.core.services.content_compressor import ContentCompressorService
-from app.core.services.tasks.thread_orchestration import ThreadOrchestrationService
+from app.core.services.threads.thread_core_service import ThreadCoreService
 from app.core.ml_models.unified_constants import ELIGIBLE_TASK_FACT_TYPES
 
 
@@ -11,7 +11,25 @@ class ThreadOrchestrator:
     def __init__(self, llm_client: LLMClient | None = None):
         self.db = get_supabase_client()
         self.llm = llm_client or LLMClient()
-        self.orchestration_service = ThreadOrchestrationService(self.llm)
+        self.orchestration_service = ThreadCoreService(self.llm)
+
+    async def update_sla_breached_threads(self):
+        """
+        Single batch update query: transitions threads in 'awaiting_reply' to 'follow_up' 
+        if the last message was sent >= 48 hours ago.
+        """
+        cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
+        try:
+            self.db.table("email_threads") \
+                .update({
+                    "workflow_status": "follow_up",
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }) \
+                .eq("workflow_status", "awaiting_reply") \
+                .lte("last_message_at", cutoff_iso) \
+                .execute()
+        except Exception as e:
+            print(f"⚠️ [ThreadOrchestrator] SLA update failed: {e}")
 
     async def run_cycle(self):
         """
@@ -21,6 +39,8 @@ class ThreadOrchestrator:
         print("\n=== [ThreadOrchestrator] Starting Processing Cycle ===")
 
         try:
+            # 0. Execute single batch update for SLA-breached threads (>48h awaiting_reply -> follow_up)
+            await self.update_sla_breached_threads()
             # 1. Fetch up to 50 active threads that need processing
             threads_res = self.db.table("email_threads") \
                 .select("*") \
@@ -51,6 +71,55 @@ class ThreadOrchestrator:
         """Generates a deterministic MD5 fingerprint for a task based on thread and action semantics."""
         raw_string = f"{thread_id}_{verb_primitive}_{object_primitive}".lower()
         return hashlib.md5(raw_string.encode('utf-8')).hexdigest()
+
+    def _derive_workflow_status(
+        self,
+        thread: dict,
+        emails: list,
+        user_email: str,
+        has_pending_tasks: bool
+    ) -> str:
+        """
+        Derives thread workflow_status following docs/thread_workflow_and_labels_manifest.md:
+        1. If has_pending_tasks -> 'needs_action' (includes open questions asked to user)
+        2. If thread is already 'archived' -> preserve 'archived' (archived threads ignored for processing)
+        3. If 0 pending tasks:
+           - Check latest email:
+             - If sent by user:
+               - Elapsed time >= 48h -> 'follow_up' (SLA threshold)
+               - Elapsed time < 48h -> 'awaiting_reply'
+             - If third-party sender -> 'informational'
+        """
+        if has_pending_tasks:
+            return "needs_action"
+
+        if thread.get("workflow_status") == "archived":
+            return "archived"
+
+        if not emails:
+            return "informational"
+
+        latest_email = emails[0]
+        latest_sender = (latest_email.get("sender") or "").lower()
+        is_user_sender = bool(user_email and user_email.lower() in latest_sender)
+
+        if is_user_sender:
+            received_at_str = latest_email.get("received_at")
+            hours_elapsed = 0.0
+            if received_at_str:
+                try:
+                    sent_dt = datetime.fromisoformat(received_at_str.replace("Z", "+00:00"))
+                    now_dt = datetime.now(timezone.utc)
+                    hours_elapsed = (now_dt - sent_dt).total_seconds() / 3600.0
+                except Exception:
+                    hours_elapsed = 0.0
+
+            if hours_elapsed >= 48.0:
+                return "follow_up"
+            else:
+                return "awaiting_reply"
+
+        return "informational"
 
     async def _orchestrate_single_thread(self, thread: dict):
         thread_id = thread["id"]
@@ -120,17 +189,13 @@ class ThreadOrchestrator:
                 thread, emails
             )
 
-            # Derive workflow status locally
-            workflow_status = "informational"
-            if pending_tasks:
-                workflow_status = "needs_action"
-            else:
-                latest_email = emails[0]
-                latest_sender = latest_email.get("sender", "").lower()
-                is_user_sender = user_email.lower() in latest_sender if user_email else False
-
-                if is_user_sender and expects_reply:
-                    workflow_status = "awaiting_reply"
+            # Derive workflow status locally via unified helper
+            workflow_status = self._derive_workflow_status(
+                thread=thread,
+                emails=emails,
+                user_email=user_email,
+                has_pending_tasks=len(pending_tasks) > 0
+            )
 
             context_memory = {
                 "message_manifest": [
@@ -201,18 +266,13 @@ class ThreadOrchestrator:
             thread_summary = summary
             new_tasks = []
 
-            # Derive overall workflow state
-            has_unresolved_tasks = len(pending_tasks) > 0
-            workflow_status = "informational"
-            if has_unresolved_tasks:
-                workflow_status = "needs_action"
-            else:
-                latest_email = emails[0]
-                latest_sender = latest_email.get("sender", "").lower()
-                is_user_sender = user_email.lower() in latest_sender if user_email else False
-
-                if is_user_sender and expects_reply:
-                    workflow_status = "awaiting_reply"
+            # Derive overall workflow state via unified helper
+            workflow_status = self._derive_workflow_status(
+                thread=thread,
+                emails=emails,
+                user_email=user_email,
+                has_pending_tasks=len(pending_tasks) > 0
+            )
         else:
             # B. Upsert generated tasks
             new_tasks = []
@@ -255,19 +315,13 @@ class ThreadOrchestrator:
                     .upsert(new_tasks, on_conflict="user_id, action_fingerprint") \
                     .execute()
 
-            # C. Derive overall workflow state
-            has_unresolved_tasks = len(pending_tasks) > 0 or len(new_tasks) > 0
-
-            workflow_status = "informational"
-            if has_unresolved_tasks:
-                workflow_status = "needs_action"
-            else:
-                latest_email = emails[0]
-                latest_sender = latest_email.get("sender", "").lower()
-                is_user_sender = user_email.lower() in latest_sender if user_email else False
-
-                if is_user_sender and response.last_user_email_expects_reply:
-                    workflow_status = "awaiting_reply"
+            # Derive overall workflow state via unified helper
+            workflow_status = self._derive_workflow_status(
+                thread=thread,
+                emails=emails,
+                user_email=user_email,
+                has_pending_tasks=(len(pending_tasks) > 0 or len(new_tasks) > 0)
+            )
 
             thread_priority = response.thread_priority or "medium"
             thread_summary = response.thread_summary or (thread.get("summary") or "No Summary")
