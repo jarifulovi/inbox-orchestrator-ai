@@ -6,7 +6,7 @@ from supabase import create_client, Client
 from uuid import UUID
 
 # Import your core orchestrator engine
-from app.core.services.ml_service import MLEngineService
+from app.core.services.ml import MLEngineService
 import app.core.ml_models.fact_extractor.spacy_engine
 
 

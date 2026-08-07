@@ -20,8 +20,7 @@ class ThreadOrchestrator:
         try:
             self.db.table("email_threads") \
                 .update({
-                    "workflow_status": "follow_up",
-                    "updated_at": datetime.now(timezone.utc).isoformat()
+                    "workflow_status": "follow_up"
                 }) \
                 .eq("workflow_status", "awaiting_reply") \
                 .lte("last_message_at", cutoff_iso) \

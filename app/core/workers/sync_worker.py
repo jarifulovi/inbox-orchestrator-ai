@@ -6,7 +6,7 @@ from app.core.schemas.emails import EmailRow
 from app.core.schemas.email_threads import EmailThreadRow
 from app.core.services.auth_service import ConnectedAccountService
 from app.core.services.gmail_service import GmailIngestionService
-from app.core.services.ml_service import MLEngineService
+from app.core.services.ml import MLEngineService
 
 
 class EmailSyncWorker:
