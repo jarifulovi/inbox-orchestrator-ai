@@ -126,7 +126,7 @@ class ThreadOrchestrator:
         # -------------------------------------------------------------
         if not facts_to_process:
             print(f"⚡ [ThreadOrchestrator] Bypassing LLM for thread {thread_id} (No new action items).")
-            summary, priority, expects_reply = self.orchestration_service.generate_rule_based_fallback(
+            summary, priority, does_need_auto_draft = self.orchestration_service.generate_rule_based_fallback(
                 thread, emails
             )
 
@@ -167,7 +167,7 @@ class ThreadOrchestrator:
 
         # 8. Apply modifications:
         if not response.has_actionable_tasks:
-            summary, _, expects_reply = self.orchestration_service.generate_rule_based_fallback(
+            summary, _, does_need_auto_draft = self.orchestration_service.generate_rule_based_fallback(
                 thread, emails
             )
             thread_priority = "low"

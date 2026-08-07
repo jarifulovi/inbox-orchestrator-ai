@@ -74,8 +74,8 @@ class ExtractedTaskBlueprint(BaseModel):
     email_fact_id: str = Field(description="The UUID of the email fact this task is generated for.")
     is_actionable_task: bool = Field(description="True if the email fact represents a real, uncompleted task that a user needs to act on. False if it's informational, already done, or too vague.")
     title: str = Field(description="Actionable and clear title for the task.")
-    intent_label: str = Field(description="Categorize the action intent as one of the following: 'schedule_meeting', 'reply_requested', 'review_document', 'provide_information', 'make_payment', 'follow_up', or 'other'.")
-    priority: str = Field(description="Task urgency: 'High', 'Medium', or 'Low'.")
+    intent_label: str = Field(description=f"Categorize the action intent as one of the following: {', '.join(sorted(VALID_INTENT_LABELS))}.")
+    priority: str = Field(description=f"Task urgency: {', '.join(sorted(VALID_TASK_PRIORITIES))}.")
     due_date_iso: Optional[str] = Field(description="The ISO 8601 formatted due date for the task, if one can be determined. Use the provided anchor_date as the current/received date to calculate relative times (e.g. 'in 2 days').")
 
 class BatchExtractedTaskBlueprint(BaseModel):
@@ -100,7 +100,7 @@ class UnifiedThreadOrchestrationResponse(BaseModel):
         None,
         description="Overall thread priority ('High', 'Medium', 'Low'). Set to null if has_actionable_tasks is False."
     )
-    last_user_email_expects_reply: Optional[bool] = Field(
+    does_need_auto_draft: Optional[bool] = Field(
         None,
-        description="True if the last user email expects a response. Set to null if has_actionable_tasks is False."
+        description="True if the thread requires an AI-generated draft response for the user. Set to null if has_actionable_tasks is False."
     )

@@ -53,10 +53,10 @@ Instructions:
 1. Determine `has_actionable_tasks`. Set to True if there is at least one new, concrete task that demands human action. Set to False for generic system updates, newsletters, subscription notices, automated server stats, status alerts, or closures. Only focus on critical updates that demand task actions (e.g., Jira tickets, server down alerts, "action required" billing updates).
 2. If `has_actionable_tasks` is False:
    - Set `task_generations` to an empty list.
-   - Leave `thread_summary`, `thread_priority`, and `last_user_email_expects_reply` as null (do not generate them).
+   - Leave `thread_summary`, `thread_priority`, and `does_need_auto_draft` as null (do not generate them).
 3. If `has_actionable_tasks` is True:
    - Evaluate the action items. Set `is_actionable_task` to True only if it requires user action. Generate the actionable `title`, `intent_label`, `priority`, and `due_date_iso` (relative to anchor date).
-   - Generate `thread_summary` (2-4 concise sentences), `thread_priority` ('High', 'Medium', 'Low'), and `last_user_email_expects_reply` (True/False).
+   - Generate `thread_summary` (2-4 concise sentences), `thread_priority` ('High', 'Medium', 'Low'), and `does_need_auto_draft` (True/False).
 """
 
     def orchestrate_thread_via_llm(
