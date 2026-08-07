@@ -115,7 +115,3 @@ class MLCoreService:
             self.post_sec_service.persist_email_metadata_and_category(db_client, email_records, ml_batch_outputs),
             self.fact_service.persist_email_facts(db_client, email_records, ml_batch_outputs)
         )
-
-
-# Backward-compatibility alias matching existing MLEngineService references
-MLEngineService = MLCoreService

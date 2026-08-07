@@ -6,7 +6,7 @@ from supabase import create_client, Client
 from uuid import UUID
 
 # Import your core orchestrator engine
-from app.core.services.ml import MLEngineService
+from app.core.services.ml import MLCoreService
 import app.core.ml_models.fact_extractor.spacy_engine
 
 
@@ -46,7 +46,7 @@ def run_pipeline_integration_test(email_limit: int = 2):
 
     # 4. Initialize Your ML Service Engine
     print("[ML SERVICE] Warming up pipeline model components...")
-    ml_service = MLEngineService()
+    ml_service = MLCoreService()
 
     # 5. Execute the End-to-End Core Pipeline
     print("\n" + "=" * 70)
@@ -155,7 +155,7 @@ def test_single_text_payload():
     ]
 
     # 2. Fire up the service engine
-    ml_service = MLEngineService()
+    ml_service = MLCoreService()
 
     # 3. Process the inference sequentially (Synchronous)
     try:

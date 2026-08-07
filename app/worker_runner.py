@@ -1,6 +1,6 @@
 import asyncio
 
-from app.core.services.ml import MLCoreService, MLEngineService
+from app.core.services.ml import MLCoreService
 from app.core.workers.sync_worker import EmailSyncWorker
 from app.core.workers.ml_recovery_orchestrator import MLRecoveryOrchestrator
 import app.core.ml_models.fact_extractor.spacy_engine

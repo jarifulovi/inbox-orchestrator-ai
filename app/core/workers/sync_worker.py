@@ -6,7 +6,7 @@ from app.core.schemas.emails import EmailRow
 from app.core.schemas.email_threads import EmailThreadRow
 from app.core.services.auth_service import ConnectedAccountService
 from app.core.services.gmail_service import GmailIngestionService
-from app.core.services.ml import MLEngineService
+from app.core.services.ml import MLCoreService
 
 
 class EmailSyncWorker:
@@ -279,11 +279,11 @@ class EmailSyncWorker:
         return records
 
 
-    def _get_or_init_ml_engine(self) -> MLEngineService:
+    def _get_or_init_ml_engine(self) -> MLCoreService:
         """Lazily instantiates the ML engine if it hasn't been warmed up yet."""
         if self.ml_engine is None:
-            print("[ML] Lazy-initializing MLEngineService instance...")
-            self.ml_engine = MLEngineService()
+            print("[ML] Lazy-initializing MLCoreService instance...")
+            self.ml_engine = MLCoreService()
         return self.ml_engine
 
 
