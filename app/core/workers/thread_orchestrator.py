@@ -1,8 +1,6 @@
-import hashlib
 from datetime import datetime, timezone, timedelta
 from app.core.db.supabase import get_supabase_client
 from app.core.llm.client import LLMClient
-from app.core.services.content_compressor import ContentCompressorService
 from app.core.services.threads.thread_core_service import ThreadCoreService
 from app.core.ml_models.unified_constants import ELIGIBLE_TASK_FACT_TYPES
 
@@ -67,60 +65,6 @@ class ThreadOrchestrator:
 
         print("=== [ThreadOrchestrator] Cycle Complete ===\n")
 
-    def _generate_action_fingerprint(self, thread_id: str, verb_primitive: str, object_primitive: str) -> str:
-        """Generates a deterministic MD5 fingerprint for a task based on thread and action semantics."""
-        raw_string = f"{thread_id}_{verb_primitive}_{object_primitive}".lower()
-        return hashlib.md5(raw_string.encode('utf-8')).hexdigest()
-
-    def _derive_workflow_status(
-        self,
-        thread: dict,
-        emails: list,
-        user_email: str,
-        has_pending_tasks: bool
-    ) -> str:
-        """
-        Derives thread workflow_status following docs/thread_workflow_and_labels_manifest.md:
-        1. If has_pending_tasks -> 'needs_action' (includes open questions asked to user)
-        2. If thread is already 'archived' -> preserve 'archived' (archived threads ignored for processing)
-        3. If 0 pending tasks:
-           - Check latest email:
-             - If sent by user:
-               - Elapsed time >= 48h -> 'follow_up' (SLA threshold)
-               - Elapsed time < 48h -> 'awaiting_reply'
-             - If third-party sender -> 'informational'
-        """
-        if has_pending_tasks:
-            return "needs_action"
-
-        if thread.get("workflow_status") == "archived":
-            return "archived"
-
-        if not emails:
-            return "informational"
-
-        latest_email = emails[0]
-        latest_sender = (latest_email.get("sender") or "").lower()
-        is_user_sender = bool(user_email and user_email.lower() in latest_sender)
-
-        if is_user_sender:
-            received_at_str = latest_email.get("received_at")
-            hours_elapsed = 0.0
-            if received_at_str:
-                try:
-                    sent_dt = datetime.fromisoformat(received_at_str.replace("Z", "+00:00"))
-                    now_dt = datetime.now(timezone.utc)
-                    hours_elapsed = (now_dt - sent_dt).total_seconds() / 3600.0
-                except Exception:
-                    hours_elapsed = 0.0
-
-            if hours_elapsed >= 48.0:
-                return "follow_up"
-            else:
-                return "awaiting_reply"
-
-        return "informational"
-
     async def _orchestrate_single_thread(self, thread: dict):
         thread_id = thread["id"]
         account_id = thread["connected_account_id"]
@@ -177,9 +121,6 @@ class ThreadOrchestrator:
 
         # -------------------------------------------------------------
         # LLM-BYPASS CHECK
-        # If there are no pending tasks and no new actions to process,
-        # -------------------------------------------------------------
-        # LLM-BYPASS CHECK
         # If there are no new actions to process, we bypass Gemini entirely
         # to save tokens and execution time.
         # -------------------------------------------------------------
@@ -189,28 +130,15 @@ class ThreadOrchestrator:
                 thread, emails
             )
 
-            # Derive workflow status locally via unified helper
-            workflow_status = self._derive_workflow_status(
+            # Derive workflow status via ThreadCoreService
+            workflow_status = self.orchestration_service.derive_workflow_status(
                 thread=thread,
                 emails=emails,
                 user_email=user_email,
                 has_pending_tasks=len(pending_tasks) > 0
             )
 
-            context_memory = {
-                "message_manifest": [
-                    {
-                        "message_id": e["id"],
-                        "sender_name": e["sender_name"],
-                        "sender_email": e["sender"],
-                        "received_at": e["received_at"],
-                        "snippet": e.get("snippet") or (e.get("body")[:200] if e.get("body") else "")
-                    }
-                    for e in reversed(emails)
-                ],
-                "aggregated_facts": [],
-                "thread_summary": summary
-            }
+            context_memory = self.orchestration_service.prepare_context_memory(emails, summary)
 
             self.db.table("email_threads").update({
                 "workflow_status": workflow_status,
@@ -224,40 +152,20 @@ class ThreadOrchestrator:
             print(f"✔ [ThreadOrchestrator] (Bypassed) Thread {thread_id} -> status: {workflow_status}, priority: {priority}")
             return
 
-        # 6. Format context data for Gemini
-        facts_payload = [
-            {
-                "id": f["id"],
-                "verb_primitive": f.get("payload", {}).get("action") if f.get("payload") else None,
-                "object_primitive": f.get("payload", {}).get("object") if f.get("payload") else None,
-                "source_sent": f.get("source_sentence"),
-                "raw_entities": f.get("payload", {}).get("entities") if f.get("payload") else None,
-                "anchor_date": f.get("anchor_date") or thread.get("last_message_at")
-            }
-            for f in facts_to_process
-        ]
-
-        email_manifest = [
-            {
-                "id": e["id"],
-                "sender": e["sender"],
-                "sender_name": e["sender_name"],
-                "received_at": e["received_at"],
-                "body_compressed": ContentCompressorService.compress_email_body(e["body"])
-            }
-            for e in emails
-        ]
+        # 6. Format context data for Gemini via ThreadCoreService
+        default_anchor = thread.get("last_message_at") or datetime.now(timezone.utc).isoformat()
+        facts_payload = self.orchestration_service.prepare_facts_payload(facts_to_process, default_anchor)
+        email_manifest = self.orchestration_service.prepare_email_manifest(emails)
 
         # 7. Orchestrate via LLM (Gemini)
         response = self.orchestration_service.orchestrate_thread_via_llm(
             thread_subject=thread.get("subject") or "No Subject",
             actions_payload=facts_payload,
             email_manifest=email_manifest,
-            anchor_date=thread.get("last_message_at") or datetime.now(timezone.utc).isoformat()
+            anchor_date=default_anchor
         )
 
         # 8. Apply modifications:
-        # A. Check if the response reports no actionable tasks (bypass LLM summary/priority)
         if not response.has_actionable_tasks:
             summary, _, expects_reply = self.orchestration_service.generate_rule_based_fallback(
                 thread, emails
@@ -266,15 +174,13 @@ class ThreadOrchestrator:
             thread_summary = summary
             new_tasks = []
 
-            # Derive overall workflow state via unified helper
-            workflow_status = self._derive_workflow_status(
+            workflow_status = self.orchestration_service.derive_workflow_status(
                 thread=thread,
                 emails=emails,
                 user_email=user_email,
                 has_pending_tasks=len(pending_tasks) > 0
             )
         else:
-            # B. Upsert generated tasks
             new_tasks = []
             facts_by_id = {f["id"]: f for f in facts_to_process}
 
@@ -289,7 +195,7 @@ class ThreadOrchestrator:
                 verb = payload.get("action") or ""
                 obj = payload.get("object") or ""
 
-                fingerprint = self._generate_action_fingerprint(
+                fingerprint = self.orchestration_service.generate_action_fingerprint(
                     thread_id,
                     verb,
                     obj
@@ -315,8 +221,7 @@ class ThreadOrchestrator:
                     .upsert(new_tasks, on_conflict="user_id, action_fingerprint") \
                     .execute()
 
-            # Derive overall workflow state via unified helper
-            workflow_status = self._derive_workflow_status(
+            workflow_status = self.orchestration_service.derive_workflow_status(
                 thread=thread,
                 emails=emails,
                 user_email=user_email,
@@ -326,23 +231,9 @@ class ThreadOrchestrator:
             thread_priority = response.thread_priority or "medium"
             thread_summary = response.thread_summary or (thread.get("summary") or "No Summary")
 
-        # D. Serialize context memory manifest
-        context_memory = {
-            "message_manifest": [
-                {
-                    "message_id": e["id"],
-                    "sender_name": e["sender_name"],
-                    "sender_email": e["sender"],
-                    "received_at": e["received_at"],
-                    "snippet": e.get("snippet") or (e.get("body")[:200] if e.get("body") else "")
-                }
-                for e in reversed(emails)  # Chronological order
-            ],
-            "aggregated_facts": [],
-            "thread_summary": thread_summary
-        }
+        # 9. Serialize context memory and update database
+        context_memory = self.orchestration_service.prepare_context_memory(emails, thread_summary)
 
-        # E. Update the thread record
         self.db.table("email_threads").update({
             "workflow_status": workflow_status,
             "priority": thread_priority.lower(),
