@@ -4,7 +4,7 @@ from datetime import datetime
 class ConnectedAccountRow(TypedDict):
     id: NotRequired[str]  # UUID primary key (auto-generated)
     user_id: str  # UUID foreign key to auth.users
-    created_at: NotRequired[datetime]
+    connected_at: NotRequired[datetime]
 
     provider: str
     provider_email: str

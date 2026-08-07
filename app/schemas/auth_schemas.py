@@ -32,6 +32,13 @@ class MeResponseSchema(BaseModel):
 # Google connect response
 class GoogleAuthUrlResponse(BaseModel):
     auth_url: str
+    url: Optional[str] = None
+
+    def model_post_init(self, __context):
+        if not self.url and self.auth_url:
+            self.url = self.auth_url
+        elif not self.auth_url and self.url:
+            self.auth_url = self.url
 
 
 class GoogleCallbackResponse(BaseModel):

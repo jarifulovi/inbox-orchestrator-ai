@@ -11,7 +11,7 @@ from dateutil.parser import isoparse
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, HTTPException
 
 from app.core.workers.sync_worker import EmailSyncWorker
 from app.core.schemas.connected_accounts import ConnectedAccountRow
@@ -25,14 +25,18 @@ from app.schemas.auth_schemas import (
 )
 
 
+# Enable relaxed token scope in oauthlib to handle Google's scope URL normalization
+os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+
+
 class AuthWebService:
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
     GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
     GOOGLE_PROFILE_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
     GOOGLE_SCOPES = [
         "openid",
-        "email",
-        "profile",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
         "https://www.googleapis.com/auth/gmail.readonly",
         "https://www.googleapis.com/auth/gmail.modify"
     ]
@@ -89,41 +93,44 @@ class AuthWebService:
         return {"id": user.id, "email": user.email, "role": user.role}
 
     async def generate_google_auth_url(self, auth_user: dict, login_hint: str | None = None) -> GoogleAuthUrlResponse:
-        flow = Flow.from_client_config(
-            self.GOOGLE_CLIENT_CONFIG,
-            scopes=self.GOOGLE_SCOPES,
-            redirect_uri=self.GOOGLE_REDIRECT_URI
-        )
-        state = str(uuid4())
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+        try:
+            flow = Flow.from_client_config(
+                self.GOOGLE_CLIENT_CONFIG,
+                scopes=self.GOOGLE_SCOPES,
+                redirect_uri=self.GOOGLE_REDIRECT_URI
+            )
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
-        # Explicitly generate a cryptographically secure manual PKCE Code Verifier string
-        code_verifier = secrets.token_urlsafe(64)
-        code_challenge = base64.urlsafe_b64encode(
-            hashlib.sha256(code_verifier.encode("utf-8")).digest()
-        ).decode("utf-8").rstrip("=")
+            # Explicitly generate a cryptographically secure manual PKCE Code Verifier string
+            code_verifier = secrets.token_urlsafe(64)
+            code_challenge = base64.urlsafe_b64encode(
+                hashlib.sha256(code_verifier.encode("utf-8")).digest()
+            ).decode("utf-8").rstrip("=")
 
-        flow.code_verifier = code_verifier
+            flow.code_verifier = code_verifier
 
-        extra_params = {
-            "access_type": "offline",
-            "prompt": "consent",
-            "code_challenge": code_challenge,
-            "code_challenge_method": "S256"
-        }
-        if login_hint:
-            extra_params["login_hint"] = login_hint
+            extra_params = {
+                "access_type": "offline",
+                "prompt": "consent",
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256"
+            }
+            if login_hint:
+                extra_params["login_hint"] = login_hint
 
-        authorization_url, _ = flow.authorization_url(**extra_params)
+            authorization_url, state = flow.authorization_url(**extra_params)
 
-        self.db.table("oauth_states").insert({
-            "state": state,
-            "user_id": auth_user.get("id"),
-            "code_verifier": code_verifier,
-            "expires_at": expires_at.isoformat(),
-        }).execute()
+            self.db.table("oauth_states").insert({
+                "state": state,
+                "user_id": auth_user.get("id"),
+                "code_verifier": code_verifier,
+                "expires_at": expires_at.isoformat(),
+            }).execute()
 
-        return GoogleAuthUrlResponse(url=authorization_url)
+            return GoogleAuthUrlResponse(auth_url=authorization_url, url=authorization_url)
+        except Exception as e:
+            print(f"[AUTH ERROR] Failed to generate Google auth URL: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate Google auth URL: {str(e)}")
 
     async def handle_google_callback(
             self,
@@ -186,27 +193,41 @@ class AuthWebService:
                 .maybe_single()
                 .execute()
             )
-
+            existing_account_data = existing_account.data if existing_account else None
             now_iso = datetime.now(timezone.utc).isoformat()
+
+            # Retrieve refresh_token safely (credentials or preserve existing)
+            refresh_token = credentials.refresh_token
+            if not refresh_token and existing_account_data:
+                refresh_token = existing_account_data.get("refresh_token")
+            if not refresh_token:
+                refresh_token = ""
+
+            token_expires_at = credentials.expiry.isoformat() if credentials.expiry else (
+                datetime.now(timezone.utc) + timedelta(hours=1)
+            ).isoformat()
+
+            granted_scopes = getattr(credentials, "scopes", None) or self.GOOGLE_SCOPES
+            scope_str = " ".join(granted_scopes) if isinstance(granted_scopes, (list, set, tuple)) else str(granted_scopes)
 
             account_data = {
                 "user_id": user_id,
                 "provider": "google",
                 "provider_email": provider_email,
                 "access_token": credentials.token,
-                "token_expires_at": credentials.expiry.isoformat() if credentials.expiry else None,
+                "refresh_token": refresh_token,
+                "token_expires_at": token_expires_at,
                 "is_active": True,
-                "updated_at": now_iso
+                "scope": scope_str,
+                "sync_mode": existing_account_data.get("sync_mode", "INITIAL_BACKFILL") if existing_account_data else "INITIAL_BACKFILL",
+                "sync_status": existing_account_data.get("sync_status", "IDLE") if existing_account_data else "IDLE",
+                "connected_at": existing_account_data.get("connected_at", now_iso) if existing_account_data else now_iso
             }
 
-            if credentials.refresh_token:
-                account_data["refresh_token"] = credentials.refresh_token
-
-            if existing_account and existing_account.data:
-                account_id = existing_account.data["id"]
+            if existing_account_data:
+                account_id = existing_account_data["id"]
                 self.db.table("connected_accounts").update(account_data).eq("id", account_id).execute()
             else:
-                account_data["created_at"] = now_iso
                 new_account_res = self.db.table("connected_accounts").insert(account_data).execute()
                 if not new_account_res.data:
                     raise Exception("Failed to save connected account record")
@@ -214,7 +235,7 @@ class AuthWebService:
 
             if background_tasks:
                 worker = EmailSyncWorker()
-                background_tasks.add_task(worker.sync_account_initial, account_id)
+                background_tasks.add_task(worker.run_initial_backfill, account_id)
 
             return RedirectResponse(url=f"{self.FRONTEND_URL}/dashboard/settings?google_connected=true")
 
