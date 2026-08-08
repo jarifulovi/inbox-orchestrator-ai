@@ -48,6 +48,7 @@ class MLCoreService:
 
             # A. Core Intent Category Inference
             predictions = self.classifier_service.predict_intent_with_gmail_shortcuts(safe_nodes)
+            predictions = self.classifier_service.apply_update_noise_rules(safe_nodes, predictions)
 
             # B. Fact Extractor Pipeline
             extracted_facts = self.fact_service.extract_facts_selectively(safe_nodes, predictions)

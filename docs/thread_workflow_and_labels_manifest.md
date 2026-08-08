@@ -14,7 +14,7 @@ Stored in `public.email_threads.workflow_status`. Defines the high-level operati
 | `awaiting_reply` | **Awaiting Reply** | Amber (`bg-amber-500/10 text-amber-400`) | Assigned when a thread has **0 pending tasks** for the user, but the user sent the latest email containing a question or request that explicitly expects a reply from the recipient. |
 | `follow_up` | **Follow Up** | Purple (`bg-purple-400/10 text-purple-400`) | Assigned when a thread contains a past commitment, open question, or delegated item that requires a future check-in or progress verification (see Section 1.1 below for detailed triggers). |
 | `informational` | **Info** | Blue (`bg-blue-400/10 text-blue-400`) | **Default state**. Assigned when a thread has **0 pending tasks** and requires no user action or reply (e.g., newsletters, receipts, automated notifications, or threads where all tasks have been completed/dismissed). |
-| `archived` | **Archived** | Zinc (`bg-zinc-500/10 text-zinc-400`) | Assigned when a thread is explicitly archived or removed from active inbox processing. |
+| `archived` | **Archived** | Zinc (`bg-zinc-500/10 text-zinc-400`) | Assigned when a thread is explicitly archived or removed. **Archived threads are ignored for future background processing and status re-evaluations altogether.** |
 
 ### 1.1 Detailed Evaluation Rules for `follow_up`
 A thread or task transitions to **`follow_up`** under the following specific operational conditions:
