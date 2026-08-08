@@ -12,6 +12,7 @@ from app.api.deps.account import get_verified_account_id
 from app.core.db.supabase import get_supabase_client
 from app.api.deps.auth import get_current_user
 from app.schemas.task_schemas import TaskCreatePayload, TaskUpdatePayload
+from app.schemas.thread_schemas import ThreadStatusUpdatePayload, ThreadStatusUpdateResponse
 
 router = APIRouter(prefix="/api/emails", tags=["emails"])
 
@@ -63,10 +64,6 @@ async def get_thread_details(
         return details
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found.")
-
-
-class ThreadStatusUpdatePayload(BaseModel):
-    workflow_status: str
 
 
 @router.patch("/threads/{thread_id}/status")

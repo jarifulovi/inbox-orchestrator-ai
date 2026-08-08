@@ -12,12 +12,13 @@ class ThreadRuleService:
         thread: Dict[str, Any],
         emails: List[Dict[str, Any]],
         user_email: str,
-        has_pending_tasks: bool
+        has_pending_tasks: bool,
+        ignore_archived: bool = False
     ) -> str:
         """
         Derives thread workflow_status following docs/thread_workflow_and_labels_manifest.md:
         1. If has_pending_tasks -> 'needs_action' (includes open questions asked to user)
-        2. If thread is already 'archived' -> preserve 'archived' (archived threads ignored for processing)
+        2. If thread is already 'archived' and not ignore_archived -> preserve 'archived'
         3. If 0 pending tasks:
            - Check latest email:
              - If sent by user:
@@ -28,7 +29,7 @@ class ThreadRuleService:
         if has_pending_tasks:
             return "needs_action"
 
-        if thread.get("workflow_status") == "archived":
+        if not ignore_archived and thread.get("workflow_status") == "archived":
             return "archived"
 
         if not emails:

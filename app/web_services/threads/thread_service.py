@@ -271,9 +271,42 @@ class ThreadWebService:
     async def update_thread_status(self, thread_id: str, account_id: str, workflow_status: str) -> Dict[str, Any]:
         """
         Updates workflow_status for a specific thread record owned by connected_account_id.
-        Validates workflow_status against VALID_WORKFLOW_STATUSES.
+        If workflow_status is 'unarchive' or 'unarchived', dynamically re-evaluates the true active status
+        ('needs_action', 'awaiting_reply', 'informational', 'follow_up') based on real-time thread facts & emails.
         """
         status_clean = (workflow_status or "").strip().lower()
+
+        if status_clean in ("unarchive", "unarchived"):
+            from app.core.services.threads.thread_rule_service import ThreadRuleService
+            rule_service = ThreadRuleService()
+
+            # Fetch thread details
+            t_res = self.db.table("email_threads").select("*").eq("id", thread_id).eq("connected_account_id", account_id).single().execute()
+            if not t_res.data:
+                raise KeyError(f"Thread {thread_id} not found or access denied.")
+            thread = t_res.data
+
+            # Fetch account provider email
+            acc_res = self.db.table("connected_accounts").select("provider_email").eq("id", account_id).single().execute()
+            user_email = (acc_res.data or {}).get("provider_email") or ""
+
+            # Fetch emails
+            e_res = self.db.table("emails").select("*").eq("thread_id", thread_id).order("received_at", desc=True).execute()
+            emails = e_res.data or []
+
+            # Check pending tasks
+            tasks_res = self.db.table("tasks").select("id").eq("thread_id", thread_id).eq("status", "pending").execute()
+            has_pending_tasks = bool(tasks_res.data)
+
+            # Re-evaluate active status
+            status_clean = rule_service.derive_workflow_status(
+                thread=thread,
+                emails=emails,
+                user_email=user_email,
+                has_pending_tasks=has_pending_tasks,
+                ignore_archived=True
+            )
+
         if status_clean not in VALID_WORKFLOW_STATUSES:
             raise ValueError(f"Invalid workflow_status '{workflow_status}'. Must be one of {VALID_WORKFLOW_STATUSES}")
 
