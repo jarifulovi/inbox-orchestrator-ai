@@ -268,6 +268,26 @@ class ThreadWebService:
             "tasks": tasks
         }
 
+    async def update_thread_status(self, thread_id: str, account_id: str, workflow_status: str) -> Dict[str, Any]:
+        """
+        Updates workflow_status for a specific thread record owned by connected_account_id.
+        Validates workflow_status against VALID_WORKFLOW_STATUSES.
+        """
+        status_clean = (workflow_status or "").strip().lower()
+        if status_clean not in VALID_WORKFLOW_STATUSES:
+            raise ValueError(f"Invalid workflow_status '{workflow_status}'. Must be one of {VALID_WORKFLOW_STATUSES}")
+
+        res = self.db.table("email_threads") \
+            .update({"workflow_status": status_clean}) \
+            .eq("id", thread_id) \
+            .eq("connected_account_id", account_id) \
+            .execute()
+
+        if not res.data:
+            raise KeyError(f"Thread {thread_id} not found or access denied.")
+
+        return res.data[0]
+
     def _extract_body_text(self, parts: list) -> str:
         """
         Helper function to iterate over Gmail payload parts and decode readable text,

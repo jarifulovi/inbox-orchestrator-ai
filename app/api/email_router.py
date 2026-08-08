@@ -1,5 +1,6 @@
 from typing import Optional
 from datetime import datetime, timezone
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, Query, HTTPException
 from app.web_services import (
     EmailWebService,
@@ -62,6 +63,27 @@ async def get_thread_details(
         return details
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found.")
+
+
+class ThreadStatusUpdatePayload(BaseModel):
+    workflow_status: str
+
+
+@router.patch("/threads/{thread_id}/status")
+async def update_thread_status(
+        thread_id: str,
+        payload: ThreadStatusUpdatePayload,
+        account_id: str = Depends(get_verified_account_id),
+        db=Depends(get_supabase_client)
+):
+    service = ThreadWebService(db)
+    try:
+        updated = await service.update_thread_status(thread_id, account_id, payload.workflow_status)
+        return {"status": "success", "thread": updated}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.post("/sync")
