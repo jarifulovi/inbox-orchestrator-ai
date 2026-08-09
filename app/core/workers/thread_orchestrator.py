@@ -114,10 +114,25 @@ class ThreadOrchestrator:
 
         thread_tasks = tasks_res.data or []
 
-        # 5. Partition tasks & facts
+        # 5. Partition tasks & facts (Isolate ONLY new email facts via message_manifest in context_memory)
         pending_tasks = [t for t in thread_tasks if t["status"] == "pending"]
         tasked_fact_ids = {t["email_fact_id"] for t in thread_tasks if t.get("email_fact_id")}
-        facts_to_process = [f for f in facts if f["id"] not in tasked_fact_ids]
+        existing_summary = thread.get("summary")
+        context_memory = thread.get("context_memory") or {}
+        message_manifest = context_memory.get("message_manifest") or []
+        processed_email_ids = {m["message_id"] for m in message_manifest if isinstance(m, dict) and "message_id" in m}
+
+        if existing_summary and processed_email_ids:
+            # Re-processing existing thread: isolate emails that have not been in message_manifest yet
+            new_emails = [e for e in emails if e["id"] not in processed_email_ids]
+            new_email_ids = {e["id"] for e in new_emails}
+            facts_to_process = [
+                f for f in facts 
+                if f["email_id"] in new_email_ids and f["id"] not in tasked_fact_ids
+            ]
+        else:
+            # Initial thread orchestration run
+            facts_to_process = [f for f in facts if f["id"] not in tasked_fact_ids]
 
         # -------------------------------------------------------------
         # LLM-BYPASS CHECK
@@ -155,23 +170,43 @@ class ThreadOrchestrator:
         # 6. Format context data for Gemini via ThreadCoreService
         default_anchor = thread.get("last_message_at") or datetime.now(timezone.utc).isoformat()
         facts_payload = self.orchestration_service.prepare_facts_payload(facts_to_process, default_anchor)
-        email_manifest = self.orchestration_service.prepare_email_manifest(emails)
+        existing_summary = thread.get("summary")
 
-        # 7. Orchestrate via LLM (Gemini)
-        response = self.orchestration_service.orchestrate_thread_via_llm(
-            thread_subject=thread.get("subject") or "No Subject",
-            actions_payload=facts_payload,
-            email_manifest=email_manifest,
-            anchor_date=default_anchor
-        )
+        # 7. Orchestrate via LLM (Gemini): Initial vs Delta Update Prompt
+        if existing_summary and len(emails) > 1:
+            # Dual-Phase Update Prompt (Delta Analysis on incoming email)
+            pending_tasks_payload = [
+                {"id": t["id"], "title": t["title"]}
+                for t in pending_tasks
+            ]
+            newest_email = emails[0] if emails else {}
+            new_email_snippet = newest_email.get("snippet") or (newest_email.get("body")[:300] if newest_email.get("body") else "New message received.")
 
-        # 8. Apply modifications:
+            response = self.orchestration_service.orchestrate_thread_update_via_llm(
+                thread_subject=thread.get("subject") or "No Subject",
+                existing_summary=existing_summary,
+                pending_tasks=pending_tasks_payload,
+                new_actions_payload=facts_payload,
+                new_email_snippet=new_email_snippet,
+                anchor_date=default_anchor
+            )
+        else:
+            # Initial Analysis Prompt for new thread
+            email_manifest = self.orchestration_service.prepare_email_manifest(emails)
+            response = self.orchestration_service.orchestrate_thread_via_llm(
+                thread_subject=thread.get("subject") or "No Subject",
+                actions_payload=facts_payload,
+                email_manifest=email_manifest,
+                anchor_date=default_anchor
+            )
+
+        # 8. Apply modifications & extract new tasks:
         if not response.has_actionable_tasks:
             summary, _, does_need_auto_draft = self.orchestration_service.generate_rule_based_fallback(
                 thread, emails
             )
             thread_priority = "low"
-            thread_summary = summary
+            thread_summary = response.thread_summary or existing_summary or summary
             new_tasks = []
 
             workflow_status = self.orchestration_service.derive_workflow_status(
@@ -231,7 +266,7 @@ class ThreadOrchestrator:
             thread_priority = response.thread_priority or "medium"
             thread_summary = response.thread_summary or (thread.get("summary") or "No Summary")
 
-        # 9. Serialize context memory and update database
+        # 10. Serialize context memory and update database
         context_memory = self.orchestration_service.prepare_context_memory(emails, thread_summary)
 
         self.db.table("email_threads").update({

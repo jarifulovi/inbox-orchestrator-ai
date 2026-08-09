@@ -49,11 +49,30 @@ class ThreadCoreService:
         email_manifest: List[Dict[str, Any]],
         anchor_date: str
     ) -> UnifiedThreadOrchestrationResponse:
-        """Delegates LLM orchestration to ThreadLLMService."""
+        """Delegates initial LLM orchestration to ThreadLLMService."""
         return self.llm_service.orchestrate_thread_via_llm(
             thread_subject=thread_subject,
             actions_payload=actions_payload,
             email_manifest=email_manifest,
+            anchor_date=anchor_date
+        )
+
+    def orchestrate_thread_update_via_llm(
+        self,
+        thread_subject: str,
+        existing_summary: str,
+        pending_tasks: List[Dict[str, Any]],
+        new_actions_payload: List[Dict[str, Any]],
+        new_email_snippet: str,
+        anchor_date: str
+    ) -> UnifiedThreadOrchestrationResponse:
+        """Delegates delta update LLM orchestration to ThreadLLMService."""
+        return self.llm_service.orchestrate_thread_update_via_llm(
+            thread_subject=thread_subject,
+            existing_summary=existing_summary,
+            pending_tasks=pending_tasks,
+            new_actions_payload=new_actions_payload,
+            new_email_snippet=new_email_snippet,
             anchor_date=anchor_date
         )
 
