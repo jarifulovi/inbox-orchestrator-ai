@@ -103,7 +103,10 @@ class MLPostSecurityService:
 
             ordered_emails.append(email)
             classification = ml.get("classification", {})
-            label_name = classification.get("label") or "UNCATEGORIZED"
+            label_name = (
+                classification.get("label") if isinstance(classification, dict)
+                else getattr(classification, "label", "UNCATEGORIZED")
+            ) or "UNCATEGORIZED"
             
             raw_payload = email.get("raw_payload") or {}
             label_ids = raw_payload.get("labelIds") or []
@@ -139,11 +142,24 @@ class MLPostSecurityService:
         update_tasks = []
         for i, (email, ml) in enumerate(zip(ordered_emails, ml_batch_outputs)):
             classification = ml.get("classification", {})
-            security = ml.get("security", {})
+            security = ml.get("security", {}) or {}
             status = ml.get("status", "APPROVED")
 
-            label_name = classification.get("label")
-            label_id = classification.get("label_id")
+            if isinstance(classification, dict):
+                label_name = classification.get("label")
+                label_id = classification.get("label_id")
+                confidence = classification.get("confidence", 0.0)
+                probabilities = classification.get("probabilities", {})
+            elif classification:
+                label_name = getattr(classification, "label", None)
+                label_id = getattr(classification, "label_id", None)
+                confidence = getattr(classification, "confidence", 0.0)
+                probabilities = getattr(classification, "probabilities", {})
+            else:
+                label_name = None
+                label_id = None
+                confidence = 0.0
+                probabilities = {}
 
             if label_id is None:
                 print(f"[ML WARNING] Missing label_id for email {email['id']}. Applying defaults.")
@@ -156,8 +172,8 @@ class MLPostSecurityService:
                 "classifier": {
                     "is_proc": True,
                     "label_id": label_id,
-                    "confidence": classification.get("confidence", 0.0),
-                    "probabilities": classification.get("probabilities", {}),
+                    "confidence": confidence,
+                    "probabilities": probabilities,
                     "model_version": CLASSIFIER_MODEL_VERSION
                 },
                 "fact_extraction": {

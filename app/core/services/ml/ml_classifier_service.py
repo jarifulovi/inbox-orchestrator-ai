@@ -1,6 +1,6 @@
 from typing import Any
 from app.core.ml_models.classifier.predictor import EmailClassifier
-from app.schemas.email_classification import EmailClassificationPrediction
+from app.core.schemas.email_classifications import EmailClassificationPrediction
 from app.core.ml_models.unified_constants import (
     GMAIL_NOISE_LABELS,
     DEFAULT_INTENT_LABEL_ID,
@@ -118,7 +118,7 @@ class MLClassifierService:
             # Check for Tier 1: Routine Noise Keywords
             is_routine_noise = any(kw in subject for kw in self.ROUTINE_NOISE_KEYWORDS)
 
-            curr_label = pred.label if isinstance(pred, EmailClassificationPrediction) else (pred.get("label") if isinstance(pred, dict) else None)
+            curr_label = pred.get("label") if isinstance(pred, dict) else getattr(pred, "label", None)
 
             # --- TIER 2 OVERRIDE: Actionable System Alert -> system_automated (feeds LLM) ---
             if is_actionable_system or (is_automated_source and any(kw in subject for kw in ["action required", "urgent", "failed", "error", "expired"])):
