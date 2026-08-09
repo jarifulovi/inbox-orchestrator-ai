@@ -123,3 +123,78 @@ class ThreadCoreService:
             "aggregated_facts": [],
             "thread_summary": thread_summary or ""
         }
+
+    def partition_unprocessed_facts(
+        self,
+        thread: Dict[str, Any],
+        emails: List[Dict[str, Any]],
+        facts: List[Dict[str, Any]],
+        thread_tasks: List[Dict[str, Any]]
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Partitions active pending tasks and isolates facts from unprocessed new emails."""
+        pending_tasks = [t for t in thread_tasks if t["status"] == "pending"]
+        tasked_fact_ids = {t["email_fact_id"] for t in thread_tasks if t.get("email_fact_id")}
+        existing_summary = thread.get("summary")
+        context_memory = thread.get("context_memory") or {}
+        message_manifest = context_memory.get("message_manifest") or []
+        processed_email_ids = {
+            m["message_id"] 
+            for m in message_manifest 
+            if isinstance(m, dict) and "message_id" in m
+        }
+
+        if existing_summary and processed_email_ids:
+            # Re-processing existing thread: isolate emails not in message_manifest yet
+            new_emails = [e for e in emails if e["id"] not in processed_email_ids]
+            new_email_ids = {e["id"] for e in new_emails}
+            facts_to_process = [
+                f for f in facts 
+                if f["email_id"] in new_email_ids and f["id"] not in tasked_fact_ids
+            ]
+        else:
+            # Initial thread orchestration run
+            facts_to_process = [f for f in facts if f["id"] not in tasked_fact_ids]
+
+        return pending_tasks, facts_to_process
+
+    def build_task_records(
+        self,
+        response: UnifiedThreadOrchestrationResponse,
+        facts_to_process: List[Dict[str, Any]],
+        thread_id: str,
+        user_id: str,
+        account_id: str
+    ) -> List[Dict[str, Any]]:
+        """Transforms Gemini ExtractedTaskBlueprint items into database task rows."""
+        new_tasks = []
+        facts_by_id = {f["id"]: f for f in facts_to_process}
+
+        for blueprint in response.task_generations:
+            if not blueprint.is_actionable_task:
+                continue
+            fact = facts_by_id.get(blueprint.email_fact_id)
+            if not fact:
+                continue
+
+            payload = fact.get("payload") or {}
+            verb = payload.get("action") or ""
+            obj = payload.get("object") or ""
+
+            fingerprint = self.generate_action_fingerprint(thread_id, verb, obj)
+
+            new_tasks.append({
+                "email_fact_id": blueprint.email_fact_id,
+                "email_id": fact["email_id"],
+                "thread_id": thread_id,
+                "user_id": user_id,
+                "connected_account_id": account_id,
+                "source": "system",
+                "title": blueprint.title,
+                "status": "pending",
+                "priority": (blueprint.priority or "medium").lower(),
+                "intent_label": blueprint.intent_label,
+                "action_fingerprint": fingerprint,
+                "due_date": blueprint.due_date_iso
+            })
+
+        return new_tasks

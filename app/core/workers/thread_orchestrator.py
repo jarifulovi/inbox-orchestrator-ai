@@ -70,115 +70,126 @@ class ThreadOrchestrator:
         account_id = thread["connected_account_id"]
 
         # 1. Fetch connected account metadata
-        acc_res = self.db.table("connected_accounts") \
-            .select("user_id, provider_email") \
-            .eq("id", account_id) \
-            .single() \
-            .execute()
-
-        if not acc_res.data:
+        acc_data = self._fetch_account_metadata(account_id)
+        if not acc_data:
             print(f"[ThreadOrchestrator] Connected account not found for thread {thread_id}. Skipping.")
             return
 
-        user_id = acc_res.data["user_id"]
-        user_email = acc_res.data["provider_email"]
+        user_id = acc_data["user_id"]
+        user_email = acc_data["provider_email"]
 
-        # 2. Fetch all emails associated with the thread (newest first)
-        emails_res = self.db.table("emails") \
-            .select("id, body, sender, sender_name, received_at, snippet") \
-            .eq("thread_id", thread_id) \
-            .order("received_at", desc=True) \
-            .execute()
-
-        emails = emails_res.data or []
+        # 2. Fetch emails, facts, and tasks
+        emails = self._fetch_thread_emails(thread_id)
         if not emails:
             print(f"[ThreadOrchestrator] No email messages found for thread {thread_id}. Marking processed.")
             self.db.table("email_threads").update({"is_processed": True}).eq("id", thread_id).execute()
             return
 
-        # 3. Fetch all task-eligible facts for these emails
-        email_ids = [e["id"] for e in emails]
-        facts_res = self.db.table("email_facts") \
+        facts = self._fetch_thread_facts([e["id"] for e in emails])
+        thread_tasks = self._fetch_thread_tasks(thread_id)
+
+        # 3. Domain Partitioning via ThreadCoreService
+        pending_tasks, facts_to_process = self.orchestration_service.partition_unprocessed_facts(
+            thread=thread,
+            emails=emails,
+            facts=facts,
+            thread_tasks=thread_tasks
+        )
+
+        # 4. LLM-Bypass Check (No new actionable items)
+        if not facts_to_process:
+            self._handle_llm_bypass(thread, emails, user_email, pending_tasks)
+            return
+
+        # 5. LLM Orchestration & Task Execution
+        self._handle_llm_orchestration(
+            thread=thread,
+            emails=emails,
+            user_id=user_id,
+            account_id=account_id,
+            user_email=user_email,
+            facts_to_process=facts_to_process,
+            pending_tasks=pending_tasks
+        )
+
+    # -------------------------------------------------------------------------
+    # PRIVATE HELPER METHODS
+    # -------------------------------------------------------------------------
+
+    def _fetch_account_metadata(self, account_id: str) -> dict | None:
+        res = self.db.table("connected_accounts") \
+            .select("user_id, provider_email") \
+            .eq("id", account_id) \
+            .single() \
+            .execute()
+        return res.data
+
+    def _fetch_thread_emails(self, thread_id: str) -> list:
+        res = self.db.table("emails") \
+            .select("id, body, sender, sender_name, received_at, snippet") \
+            .eq("thread_id", thread_id) \
+            .order("received_at", desc=True) \
+            .execute()
+        return res.data or []
+
+    def _fetch_thread_facts(self, email_ids: list[str]) -> list:
+        if not email_ids:
+            return []
+        res = self.db.table("email_facts") \
             .select("*") \
             .in_("email_id", email_ids) \
             .in_("fact_type", ELIGIBLE_TASK_FACT_TYPES) \
             .execute()
+        return res.data or []
 
-        facts = facts_res.data or []
-
-        # 4. Fetch all tasks associated with this thread
-        tasks_res = self.db.table("tasks") \
+    def _fetch_thread_tasks(self, thread_id: str) -> list:
+        res = self.db.table("tasks") \
             .select("*") \
             .eq("thread_id", thread_id) \
             .execute()
+        return res.data or []
 
-        thread_tasks = tasks_res.data or []
+    def _save_thread_state(self, thread_id: str, workflow_status: str, priority: str, summary: str, context_memory: dict):
+        self.db.table("email_threads").update({
+            "workflow_status": workflow_status,
+            "priority": priority.lower(),
+            "summary": summary,
+            "context_memory": context_memory,
+            "is_processed": True,
+            "summary_generated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", thread_id).execute()
 
-        # 5. Partition tasks & facts (Isolate ONLY new email facts via message_manifest in context_memory)
-        pending_tasks = [t for t in thread_tasks if t["status"] == "pending"]
-        tasked_fact_ids = {t["email_fact_id"] for t in thread_tasks if t.get("email_fact_id")}
-        existing_summary = thread.get("summary")
-        context_memory = thread.get("context_memory") or {}
-        message_manifest = context_memory.get("message_manifest") or []
-        processed_email_ids = {m["message_id"] for m in message_manifest if isinstance(m, dict) and "message_id" in m}
+    def _handle_llm_bypass(self, thread: dict, emails: list, user_email: str, pending_tasks: list):
+        thread_id = thread["id"]
+        print(f"⚡ [ThreadOrchestrator] Bypassing LLM for thread {thread_id} (No new action items).")
+        summary, priority, _ = self.orchestration_service.generate_rule_based_fallback(thread, emails)
+        workflow_status = self.orchestration_service.derive_workflow_status(
+            thread=thread,
+            emails=emails,
+            user_email=user_email,
+            has_pending_tasks=len(pending_tasks) > 0
+        )
+        context_memory = self.orchestration_service.prepare_context_memory(emails, summary)
+        self._save_thread_state(thread_id, workflow_status, priority, summary, context_memory)
+        print(f"✔ [ThreadOrchestrator] (Bypassed) Thread {thread_id} -> status: {workflow_status}, priority: {priority}")
 
-        if existing_summary and processed_email_ids:
-            # Re-processing existing thread: isolate emails that have not been in message_manifest yet
-            new_emails = [e for e in emails if e["id"] not in processed_email_ids]
-            new_email_ids = {e["id"] for e in new_emails}
-            facts_to_process = [
-                f for f in facts 
-                if f["email_id"] in new_email_ids and f["id"] not in tasked_fact_ids
-            ]
-        else:
-            # Initial thread orchestration run
-            facts_to_process = [f for f in facts if f["id"] not in tasked_fact_ids]
-
-        # -------------------------------------------------------------
-        # LLM-BYPASS CHECK
-        # If there are no new actions to process, we bypass Gemini entirely
-        # to save tokens and execution time.
-        # -------------------------------------------------------------
-        if not facts_to_process:
-            print(f"⚡ [ThreadOrchestrator] Bypassing LLM for thread {thread_id} (No new action items).")
-            summary, priority, does_need_auto_draft = self.orchestration_service.generate_rule_based_fallback(
-                thread, emails
-            )
-
-            # Derive workflow status via ThreadCoreService
-            workflow_status = self.orchestration_service.derive_workflow_status(
-                thread=thread,
-                emails=emails,
-                user_email=user_email,
-                has_pending_tasks=len(pending_tasks) > 0
-            )
-
-            context_memory = self.orchestration_service.prepare_context_memory(emails, summary)
-
-            self.db.table("email_threads").update({
-                "workflow_status": workflow_status,
-                "priority": priority.lower(),
-                "summary": summary,
-                "context_memory": context_memory,
-                "is_processed": True,
-                "summary_generated_at": datetime.now(timezone.utc).isoformat()
-            }).eq("id", thread_id).execute()
-
-            print(f"✔ [ThreadOrchestrator] (Bypassed) Thread {thread_id} -> status: {workflow_status}, priority: {priority}")
-            return
-
-        # 6. Format context data for Gemini via ThreadCoreService
+    def _handle_llm_orchestration(
+        self,
+        thread: dict,
+        emails: list,
+        user_id: str,
+        account_id: str,
+        user_email: str,
+        facts_to_process: list,
+        pending_tasks: list
+    ):
+        thread_id = thread["id"]
         default_anchor = thread.get("last_message_at") or datetime.now(timezone.utc).isoformat()
         facts_payload = self.orchestration_service.prepare_facts_payload(facts_to_process, default_anchor)
         existing_summary = thread.get("summary")
 
-        # 7. Orchestrate via LLM (Gemini): Initial vs Delta Update Prompt
         if existing_summary and len(emails) > 1:
-            # Dual-Phase Update Prompt (Delta Analysis on incoming email)
-            pending_tasks_payload = [
-                {"id": t["id"], "title": t["title"]}
-                for t in pending_tasks
-            ]
+            pending_tasks_payload = [{"id": t["id"], "title": t["title"]} for t in pending_tasks]
             newest_email = emails[0] if emails else {}
             new_email_snippet = newest_email.get("snippet") or (newest_email.get("body")[:300] if newest_email.get("body") else "New message received.")
 
@@ -191,7 +202,6 @@ class ThreadOrchestrator:
                 anchor_date=default_anchor
             )
         else:
-            # Initial Analysis Prompt for new thread
             email_manifest = self.orchestration_service.prepare_email_manifest(emails)
             response = self.orchestration_service.orchestrate_thread_via_llm(
                 thread_subject=thread.get("subject") or "No Subject",
@@ -200,11 +210,8 @@ class ThreadOrchestrator:
                 anchor_date=default_anchor
             )
 
-        # 8. Apply modifications & extract new tasks:
         if not response.has_actionable_tasks:
-            summary, _, does_need_auto_draft = self.orchestration_service.generate_rule_based_fallback(
-                thread, emails
-            )
+            summary, _, _ = self.orchestration_service.generate_rule_based_fallback(thread, emails)
             thread_priority = "low"
             thread_summary = response.thread_summary or existing_summary or summary
             new_tasks = []
@@ -216,40 +223,13 @@ class ThreadOrchestrator:
                 has_pending_tasks=len(pending_tasks) > 0
             )
         else:
-            new_tasks = []
-            facts_by_id = {f["id"]: f for f in facts_to_process}
-
-            for blueprint in response.task_generations:
-                if not blueprint.is_actionable_task:
-                    continue
-                fact = facts_by_id.get(blueprint.email_fact_id)
-                if not fact:
-                    continue
-
-                payload = fact.get("payload") or {}
-                verb = payload.get("action") or ""
-                obj = payload.get("object") or ""
-
-                fingerprint = self.orchestration_service.generate_action_fingerprint(
-                    thread_id,
-                    verb,
-                    obj
-                )
-
-                new_tasks.append({
-                    "email_fact_id": blueprint.email_fact_id,
-                    "email_id": fact["email_id"],
-                    "thread_id": thread_id,
-                    "user_id": user_id,
-                    "connected_account_id": account_id,
-                    "source": "system",
-                    "title": blueprint.title,
-                    "status": "pending",
-                    "priority": (blueprint.priority or "medium").lower(),
-                    "intent_label": blueprint.intent_label,
-                    "action_fingerprint": fingerprint,
-                    "due_date": blueprint.due_date_iso
-                })
+            new_tasks = self.orchestration_service.build_task_records(
+                response=response,
+                facts_to_process=facts_to_process,
+                thread_id=thread_id,
+                user_id=user_id,
+                account_id=account_id
+            )
 
             if new_tasks:
                 self.db.table("tasks") \
@@ -262,20 +242,9 @@ class ThreadOrchestrator:
                 user_email=user_email,
                 has_pending_tasks=(len(pending_tasks) > 0 or len(new_tasks) > 0)
             )
-
             thread_priority = response.thread_priority or "medium"
             thread_summary = response.thread_summary or (thread.get("summary") or "No Summary")
 
-        # 10. Serialize context memory and update database
         context_memory = self.orchestration_service.prepare_context_memory(emails, thread_summary)
-
-        self.db.table("email_threads").update({
-            "workflow_status": workflow_status,
-            "priority": thread_priority.lower(),
-            "summary": thread_summary,
-            "context_memory": context_memory,
-            "is_processed": True,
-            "summary_generated_at": datetime.now(timezone.utc).isoformat()
-        }).eq("id", thread_id).execute()
-
+        self._save_thread_state(thread_id, workflow_status, thread_priority, thread_summary, context_memory)
         print(f"✔ [ThreadOrchestrator] Orchestrated thread {thread_id} -> status: {workflow_status}, priority: {thread_priority}")
