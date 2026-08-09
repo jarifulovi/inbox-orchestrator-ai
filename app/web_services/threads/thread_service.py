@@ -367,3 +367,85 @@ class ThreadWebService:
         worker = EmailSyncWorker(db_client=self.db)
         await worker._process_account(account, skip_ml=True)
         return True
+
+    async def generate_user_thread_summary(self, thread_id: str, account_id: str) -> dict:
+        """
+        Executes user-initiated thread summary generation using UserThreadSummaryService.
+        Persists updated summary, priority, summary_generated_at, and context_memory to DB.
+        """
+        from app.web_services.threads.user_summary_service import UserThreadSummaryService
+        from app.core.services.threads.thread_core_service import ThreadCoreService
+        from datetime import datetime, timezone
+
+        # 1. Fetch target thread & verify ownership
+        thread_res = self.db.table("email_threads") \
+            .select("*") \
+            .eq("id", thread_id) \
+            .eq("connected_account_id", account_id) \
+            .single() \
+            .execute()
+
+        if not thread_res.data:
+            raise KeyError(f"Thread {thread_id} not found or access denied.")
+
+        thread = thread_res.data
+
+        # 2. Fetch all emails associated with thread (ordered by received_at DESC, newest first)
+        emails_res = self.db.table("emails") \
+            .select("id, body, sender, sender_name, received_at, snippet") \
+            .eq("thread_id", thread_id) \
+            .order("received_at", desc=True) \
+            .execute()
+
+        emails = emails_res.data or []
+        if not emails:
+            raise ValueError(f"No email messages found for thread {thread_id}.")
+
+        # 3. Fetch any existing email facts and tasks for supplementary context
+        email_ids = [e["id"] for e in emails]
+        facts_res = self.db.table("email_facts") \
+            .select("*") \
+            .in_("email_id", email_ids) \
+            .execute()
+        facts = facts_res.data or []
+
+        tasks_res = self.db.table("tasks") \
+            .select("*") \
+            .eq("thread_id", thread_id) \
+            .execute()
+        thread_tasks = tasks_res.data or []
+        pending_tasks = [t for t in thread_tasks if t.get("status") == "pending"]
+
+        # 4. Execute user summary generation via UserThreadSummaryService
+        summary_service = UserThreadSummaryService()
+        output = summary_service.generate_summary_via_llm(
+            thread_subject=thread.get("subject") or "No Subject",
+            emails=emails,
+            facts=facts,
+            pending_tasks=pending_tasks,
+            existing_summary=thread.get("summary")
+        )
+
+        # 5. Build updated context_memory and persist to email_threads DB table
+        core_service = ThreadCoreService(summary_service.llm)
+        context_memory = core_service.prepare_context_memory(emails, output.summary)
+        summary_generated_at = datetime.now(timezone.utc).isoformat()
+        priority_val = (output.priority or "medium").lower()
+
+        self.db.table("email_threads").update({
+            "summary": output.summary,
+            "priority": priority_val,
+            "summary_generated_at": summary_generated_at,
+            "context_memory": context_memory
+        }).eq("id", thread_id).execute()
+
+        # 6. Re-fetch refreshed thread details for frontend response
+        refreshed_thread = await self.get_thread_details(thread_id, account_id)
+
+        return {
+            "summary": output.summary,
+            "priority": priority_val,
+            "key_takeaways": output.key_takeaways or [],
+            "summary_generated_at": summary_generated_at,
+            "thread": refreshed_thread
+        }

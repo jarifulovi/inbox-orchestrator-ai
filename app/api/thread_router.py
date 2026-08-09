@@ -69,3 +69,24 @@ async def sync_inbox(
     service = ThreadWebService(db)
     await service.sync_user_inbox(account_id)
     return {"status": "success"}
+
+
+@router.post("/threads/{thread_id}/summary")
+async def generate_thread_summary(
+        thread_id: str,
+        account_id: str = Depends(get_verified_account_id),
+        db=Depends(get_supabase_client)
+):
+    service = ThreadWebService(db)
+    try:
+        result = await service.generate_user_thread_summary(thread_id, account_id)
+        return {"status": "success", "data": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        import traceback
+        print(f"[SUMMARY API ERROR] Summary generation failed for thread {thread_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Summary generation failed: {str(e)}")

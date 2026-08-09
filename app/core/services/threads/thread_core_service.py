@@ -14,8 +14,8 @@ class ThreadCoreService:
     Delegates LLM operations to ThreadLLMService and rule/heuristic policies to ThreadRuleService.
     """
 
-    def __init__(self, llm_client: LLMClient):
-        self.llm = llm_client
+    def __init__(self, llm_client: Optional[LLMClient] = None):
+        self.llm = llm_client or LLMClient()
         self.llm_service = ThreadLLMService(self.llm)
         self.rule_service = ThreadRuleService()
 
@@ -109,17 +109,19 @@ class ThreadCoreService:
 
     def prepare_context_memory(self, emails: List[Dict[str, Any]], thread_summary: Optional[str]) -> Dict[str, Any]:
         """Serializes thread message manifest and summary into context_memory JSON."""
+        manifest_items = []
+        for e in reversed(emails):
+            body_val = e.get("body") if isinstance(e.get("body"), str) else ""
+            snippet_val = e.get("snippet") or (body_val[:200] if body_val else "")
+            manifest_items.append({
+                "message_id": e.get("id"),
+                "sender_name": e.get("sender_name") or "",
+                "sender_email": e.get("sender") or "",
+                "received_at": e.get("received_at") or "",
+                "snippet": snippet_val
+            })
         return {
-            "message_manifest": [
-                {
-                    "message_id": e["id"],
-                    "sender_name": e["sender_name"],
-                    "sender_email": e["sender"],
-                    "received_at": e["received_at"],
-                    "snippet": e.get("snippet") or (e.get("body")[:200] if e.get("body") else "")
-                }
-                for e in reversed(emails)  # Chronological order
-            ],
+            "message_manifest": manifest_items,
             "aggregated_facts": [],
             "thread_summary": thread_summary or ""
         }
