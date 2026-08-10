@@ -21,6 +21,7 @@ async def create_thread_draft(
     Creates a manual email draft for a thread, synchronizes with Gmail API (users().drafts().create),
     persists into public.email_drafts, and resolves selected pending task IDs via public.email_draft_resolutions.
     """
+    print(f"[DRAFT API INFO] Initiating manual draft creation for thread_id={thread_id}, account_id={account_id}")
     service = DraftWebService(db)
     try:
         draft = await service.create_manual_draft(
@@ -29,12 +30,18 @@ async def create_thread_draft(
             thread_id=thread_id,
             payload=payload
         )
+        print(f"[DRAFT API SUCCESS] Draft created successfully with id={draft.get('id')}, gmail_draft_id={draft.get('gmail_draft_id')}")
         return {"status": "success", "data": draft}
     except KeyError as e:
+        print(f"[DRAFT API NOT FOUND] {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
+        print(f"[DRAFT API BAD REQUEST] {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        import traceback
+        print(f"[DRAFT API ERROR] Manual draft creation failed for thread {thread_id}: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Draft creation failed: {str(e)}")
 
 
