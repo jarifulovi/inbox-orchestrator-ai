@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/emails/search", tags=["search"])
 @router.get("/")
 async def search_emails(
         q: str = Query(..., min_length=3, description="Search query"),
-        limit: int = Query(20, ge=1, le=100),
+        limit: int = Query(15, ge=1, le=50, description="Max results hard cap"),
         offset: int = Query(0, ge=0),
         similarity_cutoff: float = Query(0.35, ge=0.0, le=1.0),
         account_id: str = Depends(get_verified_account_id),
