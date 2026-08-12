@@ -83,6 +83,15 @@ class BatchExtractedTaskBlueprint(BaseModel):
     tasks: List[ExtractedTaskBlueprint]
 
 
+class AutoDraftBlueprint(BaseModel):
+    """Pydantic schema for automated draft proposed by Gemini AI worker."""
+    can_generate: bool = Field(description="True if context is sufficient to draft a response. False if missing private user decisions or unknown prices/policies.")
+    reason: str = Field(description="Explanation of why draft was generated or why skipped due to missing context.")
+    recipient_to: List[str] = Field(default_factory=list, description="Recipient email address(es) for the proposed draft.")
+    subject: str = Field(default="", description="Subject line for the proposed draft reply (e.g. 'Re: ...').")
+    body: str = Field(default="", description="Proposed email reply body text. Uses clear placeholders like [Insert Meeting Time] for minor missing variables.")
+
+
 class UnifiedThreadOrchestrationResponse(BaseModel):
     """Unified Gemini response schema for thread-by-thread features orchestration."""
     has_actionable_tasks: bool = Field(
@@ -103,4 +112,8 @@ class UnifiedThreadOrchestrationResponse(BaseModel):
     does_need_auto_draft: Optional[bool] = Field(
         None,
         description="True if the thread requires an AI-generated draft response for the user. Set to null if has_actionable_tasks is False."
+    )
+    auto_draft: Optional[AutoDraftBlueprint] = Field(
+        None,
+        description="Automated proposed draft response payload. Populated ONLY when enable_auto_draft is True and has_actionable_tasks is True."
     )

@@ -188,9 +188,26 @@ class ThreadOrchestrator:
         facts_payload = self.orchestration_service.prepare_facts_payload(facts_to_process, default_anchor)
         existing_summary = thread.get("summary")
 
+        # Python Criteria 1-3 Pre-Check for Auto-Draft Toggle
+        newest_email = emails[0] if emails else {}
+        newest_sender = (newest_email.get("sender") or "").lower()
+        is_external_sender = bool(newest_sender and user_email.lower() not in newest_sender)
+
+        # Check active draft in DB
+        active_draft_res = self.db.table("email_drafts") \
+            .select("id") \
+            .eq("thread_id", thread_id) \
+            .eq("connected_account_id", account_id) \
+            .in_("status", ["draft", "pending_approval"]) \
+            .limit(1) \
+            .execute()
+        no_active_draft = not bool(active_draft_res.data)
+
+        # Enable auto-draft prompt toggle if incoming external email on actionable thread without active draft
+        enable_auto_draft = is_external_sender and no_active_draft
+
         if existing_summary and len(emails) > 1:
             pending_tasks_payload = [{"id": t["id"], "title": t["title"]} for t in pending_tasks]
-            newest_email = emails[0] if emails else {}
             new_email_snippet = newest_email.get("snippet") or (newest_email.get("body")[:300] if newest_email.get("body") else "New message received.")
 
             response = self.orchestration_service.orchestrate_thread_update_via_llm(
@@ -199,7 +216,8 @@ class ThreadOrchestrator:
                 pending_tasks=pending_tasks_payload,
                 new_actions_payload=facts_payload,
                 new_email_snippet=new_email_snippet,
-                anchor_date=default_anchor
+                anchor_date=default_anchor,
+                enable_auto_draft=enable_auto_draft
             )
         else:
             email_manifest = self.orchestration_service.prepare_email_manifest(emails)
@@ -207,7 +225,8 @@ class ThreadOrchestrator:
                 thread_subject=thread.get("subject") or "No Subject",
                 actions_payload=facts_payload,
                 email_manifest=email_manifest,
-                anchor_date=default_anchor
+                anchor_date=default_anchor,
+                enable_auto_draft=enable_auto_draft
             )
 
         if not response.has_actionable_tasks:
@@ -244,6 +263,38 @@ class ThreadOrchestrator:
             )
             thread_priority = response.thread_priority or "medium"
             thread_summary = response.thread_summary or (thread.get("summary") or "No Summary")
+
+            # Handle Auto-Draft persistence if generated
+            if response.auto_draft and response.auto_draft.can_generate:
+                print(f"✨ [ThreadOrchestrator] Auto-draft generated for thread {thread_id}. Persisting pending_approval draft...")
+                try:
+                    from app.core.services.drafts.draft_core_service import CoreDraftService
+
+                    core_draft_service = CoreDraftService(self.db)
+                    recipients = response.auto_draft.recipient_to or [newest_email.get("sender") or ""]
+                    cleaned_recipients = [r for r in recipients if r]
+                    draft_subject = response.auto_draft.subject or f"Re: {thread.get('subject', '')}"
+
+                    import asyncio
+                    asyncio.create_task(
+                        core_draft_service.create_draft(
+                            user_id=user_id,
+                            account_id=account_id,
+                            thread_id=thread_id,
+                            recipient_to=cleaned_recipients,
+                            subject=draft_subject,
+                            body=response.auto_draft.body,
+                            resolved_task_ids=[],
+                            generation_context={
+                                "source": "auto_worker",
+                                "can_generate": response.auto_draft.can_generate,
+                                "reason": response.auto_draft.reason
+                            },
+                            status="pending_approval"
+                        )
+                    )
+                except Exception as e:
+                    print(f"⚠️ [ThreadOrchestrator WARNING] Auto-draft persistence failed: {e}")
 
         context_memory = self.orchestration_service.prepare_context_memory(emails, thread_summary)
         self._save_thread_state(thread_id, workflow_status, thread_priority, thread_summary, context_memory)

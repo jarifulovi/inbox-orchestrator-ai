@@ -38,9 +38,19 @@ class ThreadLLMService:
         thread_subject: str,
         actions_payload: List[Dict[str, Any]],
         email_manifest: List[Dict[str, Any]],
-        anchor_date: str
+        anchor_date: str,
+        enable_auto_draft: bool = False
     ) -> str:
         """Constructs a consolidated prompt for Gemini to analyze the thread's initial tasks and metadata."""
+        auto_draft_instruction = ""
+        if enable_auto_draft:
+            auto_draft_instruction = """
+4. Auto-Draft Generation (because enable_auto_draft is True):
+   - Evaluate if the email conversation permits drafting an automated response.
+   - If missing private/unknown user decisions or policies, set `auto_draft.can_generate = False` and provide a brief `reason`.
+   - If sufficient context exists, set `auto_draft.can_generate = True`, provide `recipient_to`, `subject` (e.g. 'Re: ...'), and draft `body`.
+   - Use clear placeholders like [Insert Meeting Time] for minor missing variables.
+"""
         return f"""
 You are an advanced email operations manager.
 Subject: {thread_subject}
@@ -53,10 +63,11 @@ Instructions:
 1. Determine `has_actionable_tasks`. Set to True if there is at least one new, concrete task that demands human action. Set to False for generic system updates, newsletters, subscription notices, automated server stats, status alerts, or closures. Only focus on critical updates that demand task actions (e.g., Jira tickets, server down alerts, "action required" billing updates).
 2. If `has_actionable_tasks` is False:
    - Set `task_generations` to an empty list.
-   - Leave `thread_summary`, `thread_priority`, and `does_need_auto_draft` as null (do not generate them).
+   - Leave `thread_summary`, `thread_priority`, `does_need_auto_draft`, and `auto_draft` as null (do not generate them).
 3. If `has_actionable_tasks` is True:
    - Evaluate the action items. Set `is_actionable_task` to True only if it requires user action. Generate the actionable `title`, `intent_label`, `priority`, and `due_date_iso` (relative to anchor date).
    - Generate `thread_summary` (2-4 concise sentences), `thread_priority` ('High', 'Medium', 'Low'), and `does_need_auto_draft` (True/False).
+{auto_draft_instruction}
 """
 
     def build_thread_update_prompt(
@@ -66,9 +77,19 @@ Instructions:
         pending_tasks: List[Dict[str, Any]],
         new_actions_payload: List[Dict[str, Any]],
         new_email_snippet: str,
-        anchor_date: str
+        anchor_date: str,
+        enable_auto_draft: bool = False
     ) -> str:
         """Constructs a delta prompt for Gemini when a new email arrives on an existing thread."""
+        auto_draft_instruction = ""
+        if enable_auto_draft:
+            auto_draft_instruction = """
+4. Auto-Draft Generation (because enable_auto_draft is True):
+   - Evaluate if the email conversation permits drafting an automated response.
+   - If missing private/unknown user decisions or policies, set `auto_draft.can_generate = False` and provide a brief `reason`.
+   - If sufficient context exists, set `auto_draft.can_generate = True`, provide `recipient_to`, `subject`, and draft `body`.
+   - Use clear placeholders like [Insert Meeting Time] for minor missing variables.
+"""
         return f"""
 You are an advanced email operations manager.
 Subject: {thread_subject}
@@ -88,12 +109,11 @@ Pre-extracted action items from incoming email (tasks, commitments, questions):
 
 Instructions:
 1. Analyze the new incoming email and action items in relation to the prior thread summary and pending tasks.
-2. Determine `has_actionable_tasks`:
-   - Set to True if there are NEW actionable tasks arising from the incoming email that demand human action.
-   - Set to False if the incoming email is routine noise, autoreply, or simple acknowledgment without new task requirements.
+2. Determine `has_actionable_tasks`.
 3. If `has_actionable_tasks` is True:
    - Extract ONLY new, concrete actionable tasks created by this incoming email in `task_generations`.
    - Generate an updated, merged `thread_summary` (4-6 concise sentences incorporating the new development), updated `thread_priority`, and `does_need_auto_draft`.
+{auto_draft_instruction}
 """
 
     def orchestrate_thread_via_llm(
@@ -101,14 +121,16 @@ Instructions:
         thread_subject: str,
         actions_payload: List[Dict[str, Any]],
         email_manifest: List[Dict[str, Any]],
-        anchor_date: str
+        anchor_date: str,
+        enable_auto_draft: bool = False
     ) -> UnifiedThreadOrchestrationResponse:
         """Queries Gemini using the unified response schema to analyze thread actions and tasks."""
         prompt = self.build_orchestration_prompt(
             thread_subject=thread_subject,
             actions_payload=actions_payload,
             email_manifest=email_manifest,
-            anchor_date=anchor_date
+            anchor_date=anchor_date,
+            enable_auto_draft=enable_auto_draft
         )
         return self.llm.generate_structured_json(
             prompt=prompt,
@@ -122,7 +144,8 @@ Instructions:
         pending_tasks: List[Dict[str, Any]],
         new_actions_payload: List[Dict[str, Any]],
         new_email_snippet: str,
-        anchor_date: str
+        anchor_date: str,
+        enable_auto_draft: bool = False
     ) -> UnifiedThreadOrchestrationResponse:
         """Queries Gemini for delta analysis on an existing thread when a new email arrives."""
         prompt = self.build_thread_update_prompt(
@@ -131,10 +154,10 @@ Instructions:
             pending_tasks=pending_tasks,
             new_actions_payload=new_actions_payload,
             new_email_snippet=new_email_snippet,
-            anchor_date=anchor_date
+            anchor_date=anchor_date,
+            enable_auto_draft=enable_auto_draft
         )
         return self.llm.generate_structured_json(
             prompt=prompt,
             response_schema=UnifiedThreadOrchestrationResponse
         )
-
