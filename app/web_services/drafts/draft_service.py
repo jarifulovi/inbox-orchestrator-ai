@@ -47,6 +47,32 @@ class DraftWebService:
         gmail_thread_id = thread.get("gmail_thread_id")
         print(f"[DRAFT SERVICE LOG 2/6] Found thread record. Gmail Thread ID: {gmail_thread_id}")
 
+        # Check if an active un-sent draft already exists for this thread
+        existing_draft_res = self.db.table("email_drafts") \
+            .select("id") \
+            .eq("thread_id", thread_id) \
+            .eq("connected_account_id", account_id) \
+            .in_("status", ["draft", "pending_approval"]) \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
+
+        if existing_draft_res.data:
+            existing_draft_id = existing_draft_res.data[0]["id"]
+            print(f"[DRAFT SERVICE UPSERT] Active draft {existing_draft_id} exists for thread. Updating existing draft...")
+            update_payload = UpdateDraftRequest(
+                recipient_to=payload.recipient_to,
+                subject=payload.subject,
+                body=payload.body,
+                resolved_task_ids=payload.resolved_task_ids
+            )
+            return await self.update_manual_draft(
+                user_id=user_id,
+                account_id=account_id,
+                draft_id=existing_draft_id,
+                payload=update_payload
+            )
+
         # 2. Fetch reply-to email headers if reply_to_email_id is provided
         reply_to_msg_id = None
         if payload.reply_to_email_id:
