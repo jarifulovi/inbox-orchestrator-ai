@@ -120,3 +120,7 @@ Thumbs.db
 
 # Ignore HTTP test files
 *.http
+
+# Temporal test files
+scratch/
+tests/files/
