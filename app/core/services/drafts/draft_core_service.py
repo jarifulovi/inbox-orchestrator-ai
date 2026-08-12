@@ -149,10 +149,10 @@ class CoreDraftService:
 
         self.db.table("email_drafts").insert(draft_data).execute()
 
-        # 7. Process Task Resolutions if provided
+        # 7. Process Task Resolutions if provided (Additive Upsert strategy preserving immutable audit history)
         task_ids = resolved_task_ids or []
         if task_ids:
-            resolutions_to_insert = [
+            resolutions_to_upsert = [
                 {
                     "id": str(uuid.uuid4()),
                     "email_draft_id": draft_record_id,
@@ -162,7 +162,9 @@ class CoreDraftService:
                 for tid in task_ids
             ]
             try:
-                self.db.table("email_draft_resolutions").insert(resolutions_to_insert).execute()
+                self.db.table("email_draft_resolutions") \
+                    .upsert(resolutions_to_upsert, on_conflict="email_draft_id, task_id") \
+                    .execute()
                 # Update task statuses to completed
                 self.db.table("tasks") \
                     .update({"status": "completed", "updated_at": now_iso}) \
@@ -265,31 +267,51 @@ class CoreDraftService:
         # Update Supabase record
         self.db.table("email_drafts").update(update_fields).eq("id", draft_id).execute()
 
-        # Handle task resolutions update if provided
-        if resolved_task_ids is not None:
-            # Remove old draft resolutions
-            self.db.table("email_draft_resolutions").delete().eq("email_draft_id", draft_id).execute()
-            if resolved_task_ids:
-                resolutions_to_insert = [
+        # Handle task resolutions update if provided (Additive Upsert strategy preserving immutable audit history)
+        if resolved_task_ids:
+            # 1. Fetch existing resolutions for this draft to avoid duplicate attempts
+            existing_res = self.db.table("email_draft_resolutions") \
+                .select("task_id") \
+                .eq("email_draft_id", draft_id) \
+                .execute()
+            existing_task_ids = {r["task_id"] for r in (existing_res.data or [])}
+
+            # 2. Filter for newly added task IDs
+            new_task_ids = [tid for tid in resolved_task_ids if tid not in existing_task_ids]
+
+            if new_task_ids:
+                resolutions_to_upsert = [
                     {
                         "id": str(uuid.uuid4()),
                         "email_draft_id": draft_id,
                         "task_id": tid,
                         "resolved_at": now_iso
                     }
-                    for tid in resolved_task_ids
+                    for tid in new_task_ids
                 ]
-                self.db.table("email_draft_resolutions").insert(resolutions_to_insert).execute()
-                self.db.table("tasks").update({"status": "completed", "updated_at": now_iso}).in_("id", resolved_task_ids).execute()
+                try:
+                    self.db.table("email_draft_resolutions") \
+                        .upsert(resolutions_to_upsert, on_conflict="email_draft_id, task_id") \
+                        .execute()
+
+                    self.db.table("tasks") \
+                        .update({"status": "completed", "updated_at": now_iso}) \
+                        .in_("id", new_task_ids) \
+                        .execute()
+                except Exception as ex:
+                    print(f"[CORE DRAFT WARNING] Failed to upsert task resolutions: {ex}")
 
             # Re-evaluate thread workflow status
             if thread_id:
                 await self.synchronizer.sync_thread_status(thread_id, account_id)
 
-        # Re-fetch updated draft
+        # Re-fetch updated draft and combine all resolutions associated with this draft
         refreshed = self.db.table("email_drafts").select("*").eq("id", draft_id).single().execute()
         refreshed_data = refreshed.data
-        refreshed_data["resolved_task_ids"] = resolved_task_ids if resolved_task_ids is not None else []
+
+        # Fetch all resolutions for this draft
+        all_res = self.db.table("email_draft_resolutions").select("task_id").eq("email_draft_id", draft_id).execute()
+        refreshed_data["resolved_task_ids"] = [r["task_id"] for r in (all_res.data or [])]
         return refreshed_data
 
     async def send_draft(self, user_id: str, account_id: str, draft_id: str) -> Dict[str, Any]:
