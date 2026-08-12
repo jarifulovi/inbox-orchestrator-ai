@@ -269,37 +269,28 @@ class CoreDraftService:
 
         # Handle task resolutions update if provided (Additive Upsert strategy preserving immutable audit history)
         if resolved_task_ids:
-            # 1. Fetch existing resolutions for this draft to avoid duplicate attempts
-            existing_res = self.db.table("email_draft_resolutions") \
-                .select("task_id") \
-                .eq("email_draft_id", draft_id) \
-                .execute()
-            existing_task_ids = {r["task_id"] for r in (existing_res.data or [])}
+            resolutions_to_upsert = [
+                {
+                    "id": str(uuid.uuid4()),
+                    "email_draft_id": draft_id,
+                    "task_id": tid,
+                    "resolved_at": now_iso
+                }
+                for tid in resolved_task_ids
+            ]
+            try:
+                # 1. Upsert resolutions without deleting historical records
+                self.db.table("email_draft_resolutions") \
+                    .upsert(resolutions_to_upsert, on_conflict="email_draft_id, task_id") \
+                    .execute()
 
-            # 2. Filter for newly added task IDs
-            new_task_ids = [tid for tid in resolved_task_ids if tid not in existing_task_ids]
-
-            if new_task_ids:
-                resolutions_to_upsert = [
-                    {
-                        "id": str(uuid.uuid4()),
-                        "email_draft_id": draft_id,
-                        "task_id": tid,
-                        "resolved_at": now_iso
-                    }
-                    for tid in new_task_ids
-                ]
-                try:
-                    self.db.table("email_draft_resolutions") \
-                        .upsert(resolutions_to_upsert, on_conflict="email_draft_id, task_id") \
-                        .execute()
-
-                    self.db.table("tasks") \
-                        .update({"status": "completed", "updated_at": now_iso}) \
-                        .in_("id", new_task_ids) \
-                        .execute()
-                except Exception as ex:
-                    print(f"[CORE DRAFT WARNING] Failed to upsert task resolutions: {ex}")
+                # 2. Always transition selected task statuses to completed
+                self.db.table("tasks") \
+                    .update({"status": "completed", "updated_at": now_iso}) \
+                    .in_("id", resolved_task_ids) \
+                    .execute()
+            except Exception as ex:
+                print(f"[CORE DRAFT WARNING] Failed to upsert task resolutions: {ex}")
 
             # Re-evaluate thread workflow status
             if thread_id:
