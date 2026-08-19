@@ -9,6 +9,7 @@ from app.web_services.emails import EmailWebService
 from app.web_services.search import SearchWebService
 from app.web_services.threads import ThreadWebService
 from app.web_services.tasks import TaskWebService
+from app.web_services.analytics.analytics_service import AnalyticsWebService
 
 __all__ = [
     "AuthWebService",
@@ -16,4 +17,5 @@ __all__ = [
     "SearchWebService",
     "ThreadWebService",
     "TaskWebService",
+    "AnalyticsWebService",
 ]
