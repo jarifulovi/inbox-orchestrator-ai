@@ -3,7 +3,7 @@ import base64
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from supabase import Client
-from app.core.db.supabase import get_supabase_client
+from app.core.db.supabase import get_supabase_client, reset_supabase_client
 from app.core.schemas.email_threads import VALID_WORKFLOW_STATUSES, VALID_THREAD_PRIORITIES
 
 
@@ -37,7 +37,16 @@ class ThreadWebService:
             if acc_res and acc_res.data:
                 account_email = acc_res.data.get("provider_email") or ""
         except Exception as e:
-            print(f"[THREADS WARNING] Failed to fetch provider_email for connected account {account_id}: {e}")
+            if "ConnectionTerminated" in str(e) or "RemoteProtocolError" in str(e):
+                self.db = reset_supabase_client()
+                try:
+                    acc_res = self.db.table("connected_accounts").select("provider_email").eq("id", account_id).single().execute()
+                    if acc_res and acc_res.data:
+                        account_email = acc_res.data.get("provider_email") or ""
+                except Exception as retry_e:
+                    print(f"[THREADS WARNING] Retry fetch provider_email failed: {retry_e}")
+            else:
+                print(f"[THREADS WARNING] Failed to fetch provider_email for connected account {account_id}: {e}")
 
         # 2. Fetch threads with filters
         try:
@@ -53,15 +62,50 @@ class ThreadWebService:
 
             if q and q.strip():
                 keyword = q.strip()
-                query = query.ilike("subject", f"%{keyword}%")
+                # Pre-fetch matching thread IDs from emails table where sender or sender_name matches keyword
+                matched_thread_ids = set()
+                try:
+                    matched_emails_res = self.db.table("emails") \
+                        .select("thread_id") \
+                        .eq("connected_account_id", account_id) \
+                        .or_(f"sender.ilike.%{keyword}%,sender_name.ilike.%{keyword}%") \
+                        .limit(100) \
+                        .execute()
+                    if matched_emails_res.data:
+                        matched_thread_ids = {str(e["thread_id"]) for e in matched_emails_res.data if e.get("thread_id")}
+                except Exception as match_err:
+                    print(f"[THREADS SEARCH WARNING] Sender match pre-query failed: {match_err}")
+
+                if matched_thread_ids:
+                    t_ids_str = ",".join(matched_thread_ids)
+                    query = query.or_(f"subject.ilike.%{keyword}%,id.in.({t_ids_str})")
+                else:
+                    query = query.ilike("subject", f"%{keyword}%")
 
             threads_res = query.order("last_message_at", desc=True) \
                 .range(offset, offset + limit - 1) \
                 .execute()
             threads = threads_res.data or []
         except Exception as e:
-            print(f"[THREADS ERROR] Failed to fetch email_threads: {e}")
-            return []
+            if "ConnectionTerminated" in str(e) or "RemoteProtocolError" in str(e):
+                self.db = reset_supabase_client()
+                try:
+                    # Re-build query with fresh client
+                    query = self.db.table("email_threads").select("*").eq("connected_account_id", account_id)
+                    if workflow_status and workflow_status.strip() and workflow_status.strip().lower() != "all":
+                        query = query.eq("workflow_status", workflow_status.strip().lower())
+                    if priority and priority.strip() and priority.strip().lower() != "all":
+                        query = query.eq("priority", priority.strip().lower())
+                    if q and q.strip():
+                        query = query.ilike("subject", f"%{q.strip()}%")
+                    threads_res = query.order("last_message_at", desc=True).range(offset, offset + limit - 1).execute()
+                    threads = threads_res.data or []
+                except Exception as retry_e:
+                    print(f"[THREADS ERROR] Retry fetch email_threads failed: {retry_e}")
+                    return []
+            else:
+                print(f"[THREADS ERROR] Failed to fetch email_threads: {e}")
+                return []
 
         if not threads:
             return []
