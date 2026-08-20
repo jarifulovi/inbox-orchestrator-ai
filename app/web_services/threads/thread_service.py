@@ -3,7 +3,7 @@ import base64
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from supabase import Client
-from app.core.db.supabase import get_supabase_client, reset_supabase_client
+from app.core.db.supabase import get_supabase_client
 from app.core.schemas.email_threads import VALID_WORKFLOW_STATUSES, VALID_THREAD_PRIORITIES
 
 
@@ -37,16 +37,7 @@ class ThreadWebService:
             if acc_res and acc_res.data:
                 account_email = acc_res.data.get("provider_email") or ""
         except Exception as e:
-            if "ConnectionTerminated" in str(e) or "RemoteProtocolError" in str(e):
-                self.db = reset_supabase_client()
-                try:
-                    acc_res = self.db.table("connected_accounts").select("provider_email").eq("id", account_id).single().execute()
-                    if acc_res and acc_res.data:
-                        account_email = acc_res.data.get("provider_email") or ""
-                except Exception as retry_e:
-                    print(f"[THREADS WARNING] Retry fetch provider_email failed: {retry_e}")
-            else:
-                print(f"[THREADS WARNING] Failed to fetch provider_email for connected account {account_id}: {e}")
+            print(f"[THREADS WARNING] Failed to fetch provider_email for connected account {account_id}: {e}")
 
         # 2. Fetch threads with filters
         try:
@@ -87,25 +78,8 @@ class ThreadWebService:
                 .execute()
             threads = threads_res.data or []
         except Exception as e:
-            if "ConnectionTerminated" in str(e) or "RemoteProtocolError" in str(e):
-                self.db = reset_supabase_client()
-                try:
-                    # Re-build query with fresh client
-                    query = self.db.table("email_threads").select("*").eq("connected_account_id", account_id)
-                    if workflow_status and workflow_status.strip() and workflow_status.strip().lower() != "all":
-                        query = query.eq("workflow_status", workflow_status.strip().lower())
-                    if priority and priority.strip() and priority.strip().lower() != "all":
-                        query = query.eq("priority", priority.strip().lower())
-                    if q and q.strip():
-                        query = query.ilike("subject", f"%{q.strip()}%")
-                    threads_res = query.order("last_message_at", desc=True).range(offset, offset + limit - 1).execute()
-                    threads = threads_res.data or []
-                except Exception as retry_e:
-                    print(f"[THREADS ERROR] Retry fetch email_threads failed: {retry_e}")
-                    return []
-            else:
-                print(f"[THREADS ERROR] Failed to fetch email_threads: {e}")
-                return []
+            print(f"[THREADS ERROR] Failed to fetch email_threads: {e}")
+            return []
 
         if not threads:
             return []
@@ -117,94 +91,99 @@ class ThreadWebService:
         # 3. Bulk fetch emails for these threads to resolve latest sender info, latest email security_trust_level, and message_count
         emails_by_thread = {}
         latest_email_info = {}
+
         try:
-            e_res = self.db.table("emails") \
+            emails_res = self.db.table("emails") \
                 .select("id, thread_id, sender, sender_name, received_at, ai_metadata") \
                 .in_("thread_id", thread_ids) \
                 .order("received_at", desc=True) \
                 .execute()
-            
-            for e in (e_res.data or []):
-                t_id = e.get("thread_id")
+
+            raw_emails = emails_res.data or []
+
+            for em in raw_emails:
+                t_id = em.get("thread_id")
                 if not t_id:
                     continue
-                emails_by_thread[t_id] = emails_by_thread.get(t_id, 0) + 1
 
-                # Capture latest email details per thread
+                if t_id not in emails_by_thread:
+                    emails_by_thread[t_id] = []
+                emails_by_thread[t_id].append(em)
+
                 if t_id not in latest_email_info:
-                    sender_email = e.get("sender", "")
-                    sender_name = e.get("sender_name")
-                    if not sender_name:
-                        sender_name = sender_email.split("<")[0].strip() if "<" in sender_email else sender_email
+                    s_email = em.get("sender") or ""
+                    s_name = em.get("sender_name")
+                    if not s_name:
+                        s_name = s_email.split("<")[0].strip() if "<" in s_email else s_email
 
-                    sec_meta = (e.get("ai_metadata") or {}).get("security_analysis") or {}
-                    sec_level = sec_meta.get("security_trust_level", "unverified")
+                    sec_meta = (em.get("ai_metadata") or {}).get("security_analysis") or {}
+                    s_trust = sec_meta.get("security_trust_level") or "unverified"
 
                     latest_email_info[t_id] = {
-                        "sender_name": sender_name,
-                        "sender_email": sender_email,
-                        "security_trust_level": sec_level
+                        "sender_email": s_email,
+                        "sender_name": s_name,
+                        "security_trust_level": s_trust,
+                        "latest_email_id": em.get("id")
                     }
-        except Exception as ex:
-            print(f"[THREADS WARNING] Bulk email resolution failed: {ex}")
 
-        # 4. Bulk count pending tasks per thread
-        tasks_counts = {}
+        except Exception as e:
+            print(f"[THREADS WARNING] Failed to bulk fetch thread emails: {e}")
+
+        # 4. Bulk fetch pending task counts per thread
+        pending_task_counts = {}
         try:
             tasks_res = self.db.table("tasks") \
-                .select("id, thread_id") \
+                .select("thread_id") \
+                .eq("connected_account_id", account_id) \
                 .in_("thread_id", thread_ids) \
                 .eq("status", "pending") \
                 .execute()
-            
-            for task in (tasks_res.data or []):
-                t_id = task.get("thread_id")
-                if t_id:
-                    tasks_counts[t_id] = tasks_counts.get(t_id, 0) + 1
-        except Exception as ex:
-            print(f"[THREADS WARNING] Bulk task counting failed: {ex}")
 
-        # 5. Format threads payload
+            for task_item in (tasks_res.data or []):
+                t_id = task_item.get("thread_id")
+                if t_id:
+                    pending_task_counts[t_id] = pending_task_counts.get(t_id, 0) + 1
+        except Exception as e:
+            print(f"[THREADS WARNING] Failed to fetch task counts: {e}")
+
+        # 5. Format & return threads
         formatted_threads = []
         for t in threads:
             t_id = t["id"]
             e_info = latest_email_info.get(t_id, {})
-            sender_name = e_info.get("sender_name", "Unknown")
-            sender_email = e_info.get("sender_email", "unknown@email.com")
-            security_trust_level = e_info.get("security_trust_level", "unverified")
+            msg_count = len(emails_by_thread.get(t_id, []))
 
-            # Priority from email_threads DB column (default: "medium")
-            raw_priority = (t.get("priority") or "").lower()
-            priority = raw_priority if raw_priority in VALID_THREAD_PRIORITIES else "medium"
+            # Derive workflow status
+            w_status = t.get("workflow_status")
+            if not w_status or w_status not in VALID_WORKFLOW_STATUSES:
+                w_status = "needs_action"
 
-            # Workflow status from email_threads DB column (default: "informational")
-            raw_workflow = (t.get("workflow_status") or "").lower()
-            workflow_status = raw_workflow if raw_workflow in VALID_WORKFLOW_STATUSES else "informational"
+            # Derive priority
+            prio = t.get("priority")
+            if not prio or prio not in VALID_THREAD_PRIORITIES:
+                prio = "medium"
 
-            # Tasks count from tasks table
-            tasks_count = tasks_counts.get(t_id, 0)
-
-            # Unread status
-            unread_count = t.get("unread_messages_count", 0)
-            unread = bool(unread_count > 0 or t.get("unread", False))
-
-            message_count = emails_by_thread.get(t_id, 1)
+            last_date = t.get("last_message_at") or t.get("created_at")
+            task_count = pending_task_counts.get(t_id, 0)
 
             formatted_threads.append({
                 "id": t_id,
                 "subject": t.get("subject") or "(No Subject)",
-                "sender_name": sender_name,
-                "sender_email": sender_email,
-                "preview": t.get("snippet") or "",
-                "summary": t.get("summary") or "No Summary",
-                "priority": priority,
-                "workflow_status": workflow_status,
-                "security_trust_level": security_trust_level,
-                "tasks_count": tasks_count,
-                "timestamp": t.get("last_message_at"),
-                "unread": unread,
-                "message_count": message_count,
-                "account_email": account_email
+                "sender_name": e_info.get("sender_name") or "External Sender",
+                "sender_email": e_info.get("sender_email") or account_email or "unknown@domain.com",
+                "preview": t.get("snippet") or t.get("summary") or "No preview available.",
+                "summary": t.get("summary") or "No summary available.",
+                "priority": prio,
+                "workflow_status": w_status,
+                "security_trust_level": e_info.get("security_trust_level") or "unverified",
+                "tasks_count": task_count,
+                "pending_task_count": task_count,
+                "timestamp": last_date,
+                "last_message_at": last_date,
+                "unread": bool(t.get("unread_messages_count", 0) > 0 or t.get("unread", False)),
+                "message_count": max(msg_count, 1),
+                "account_email": account_email,
+                "latest_email_id": e_info.get("latest_email_id")
             })
 
         return formatted_threads
@@ -302,9 +281,14 @@ class ThreadWebService:
         task_res = self.db.table("tasks").select("*").eq("thread_id", thread_id).execute()
         tasks = task_res.data or []
 
-        # Enrich thread record
+        # Enrich thread record for frontend complete interface
+        last_date = thread.get("last_message_at") or thread.get("created_at")
         thread["security_trust_level"] = overall_security_level
         thread["tasks_count"] = len(tasks)
+        thread["pending_task_count"] = len([t for t in tasks if t.get("status") == "pending"])
+        thread["timestamp"] = last_date
+        thread["last_message_at"] = last_date
+        thread["preview"] = thread.get("snippet") or thread.get("summary") or ""
 
         return {
             "thread": thread,
@@ -312,50 +296,69 @@ class ThreadWebService:
             "tasks": tasks
         }
 
-    async def update_thread_status(self, thread_id: str, account_id: str, workflow_status: str) -> Dict[str, Any]:
+    async def update_thread_status(
+            self,
+            thread_id: str,
+            account_id: str,
+            workflow_status: Optional[str] = None,
+            priority: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
-        Updates workflow_status for a specific thread record owned by connected_account_id.
+        Updates thread workflow_status and/or priority with schema validation.
         If workflow_status is 'unarchive' or 'unarchived', dynamically re-evaluates the true active status
         ('needs_action', 'awaiting_reply', 'informational', 'follow_up') based on real-time thread facts & emails.
         """
-        status_clean = (workflow_status or "").strip().lower()
+        update_data = {}
 
-        if status_clean in ("unarchive", "unarchived"):
-            from app.core.services.threads.thread_rule_service import ThreadRuleService
-            rule_service = ThreadRuleService()
+        if workflow_status is not None:
+            status_clean = workflow_status.strip().lower()
 
-            # Fetch thread details
-            t_res = self.db.table("email_threads").select("*").eq("id", thread_id).eq("connected_account_id", account_id).single().execute()
-            if not t_res.data:
-                raise KeyError(f"Thread {thread_id} not found or access denied.")
-            thread = t_res.data
+            if status_clean in ("unarchive", "unarchived"):
+                from app.core.services.threads.thread_rule_service import ThreadRuleService
+                rule_service = ThreadRuleService()
 
-            # Fetch account provider email
-            acc_res = self.db.table("connected_accounts").select("provider_email").eq("id", account_id).single().execute()
-            user_email = (acc_res.data or {}).get("provider_email") or ""
+                # Fetch thread details
+                t_res = self.db.table("email_threads").select("*").eq("id", thread_id).eq("connected_account_id", account_id).single().execute()
+                if not t_res.data:
+                    raise KeyError(f"Thread {thread_id} not found or access denied.")
+                thread = t_res.data
 
-            # Fetch emails
-            e_res = self.db.table("emails").select("*").eq("thread_id", thread_id).order("received_at", desc=True).execute()
-            emails = e_res.data or []
+                # Fetch account provider email
+                acc_res = self.db.table("connected_accounts").select("provider_email").eq("id", account_id).single().execute()
+                user_email = (acc_res.data or {}).get("provider_email") or ""
 
-            # Check pending tasks
-            tasks_res = self.db.table("tasks").select("id").eq("thread_id", thread_id).eq("status", "pending").execute()
-            has_pending_tasks = bool(tasks_res.data)
+                # Fetch emails
+                e_res = self.db.table("emails").select("*").eq("thread_id", thread_id).order("received_at", desc=True).execute()
+                emails = e_res.data or []
 
-            # Re-evaluate active status
-            status_clean = rule_service.derive_workflow_status(
-                thread=thread,
-                emails=emails,
-                user_email=user_email,
-                has_pending_tasks=has_pending_tasks,
-                ignore_archived=True
-            )
+                # Check pending tasks
+                tasks_res = self.db.table("tasks").select("id").eq("thread_id", thread_id).eq("status", "pending").execute()
+                has_pending_tasks = bool(tasks_res.data)
 
-        if status_clean not in VALID_WORKFLOW_STATUSES:
-            raise ValueError(f"Invalid workflow_status '{workflow_status}'. Must be one of {VALID_WORKFLOW_STATUSES}")
+                # Re-evaluate active status
+                status_clean = rule_service.derive_workflow_status(
+                    thread=thread,
+                    emails=emails,
+                    user_email=user_email,
+                    has_pending_tasks=has_pending_tasks,
+                    ignore_archived=True
+                )
+
+            if status_clean not in VALID_WORKFLOW_STATUSES:
+                raise ValueError(f"Invalid workflow_status '{workflow_status}'. Must be one of {VALID_WORKFLOW_STATUSES}.")
+            update_data["workflow_status"] = status_clean
+
+        if priority is not None:
+            prio = priority.strip().lower()
+            if prio not in VALID_THREAD_PRIORITIES:
+                raise ValueError(f"Invalid priority '{priority}'. Must be one of {VALID_THREAD_PRIORITIES}.")
+            update_data["priority"] = prio
+
+        if not update_data:
+            return {"status": "success", "message": "No changes requested."}
 
         res = self.db.table("email_threads") \
-            .update({"workflow_status": status_clean}) \
+            .update(update_data) \
             .eq("id", thread_id) \
             .eq("connected_account_id", account_id) \
             .execute()
