@@ -19,6 +19,54 @@ class EmailSyncWorker:
         self.FORCING_BACKFILL_BATCH_SIZE = 10
 
 
+    async def run_onboarding_cycle(self, max_batches_per_account: int = 2) -> int:
+        """
+        Processes onboarding accounts (sync_mode in INITIAL_BACKFILL, BACKFILLING)
+        using a fair, capped round-robin strategy to avoid starving other accounts.
+        Returns the number of onboarding accounts remaining.
+        """
+        all_accounts = self.auth_manager.get_active_google_accounts()
+        onboarding_accounts = [
+            acc for acc in all_accounts
+            if acc.get("sync_mode") in (None, "INITIAL_BACKFILL", "BACKFILLING")
+            and acc.get("sync_status") != "FAILED"
+        ]
+
+        if not onboarding_accounts:
+            return 0
+
+        print(f"📥 [ONBOARDING WORKER] Found {len(onboarding_accounts)} account(s) needing onboarding backfill.")
+
+        for account in onboarding_accounts:
+            account_id = account["id"]
+            email = account.get("provider_email")
+            print(f"🔄 [ONBOARDING BATCH] Executing round-robin backfill for {email} (max {max_batches_per_account} batches)...")
+
+            for batch_num in range(1, max_batches_per_account + 1):
+                latest_account = self.auth_manager.get_account_by_id(account_id)
+                if not latest_account:
+                    break
+
+                if latest_account.get("sync_mode") == "ACTIVE":
+                    print(f"✅ [ONBOARDING COMPLETE] {email} reached ACTIVE status!")
+                    break
+
+                try:
+                    await self._process_account(latest_account, skip_ml=True)
+                except Exception as e:
+                    print(f"💥 [ONBOARDING ERROR] {email} batch #{batch_num} failed: {e}")
+                    break
+
+                await asyncio.sleep(0.01)
+
+        # Count remaining onboarding accounts
+        remaining = [
+            acc for acc in self.auth_manager.get_active_google_accounts()
+            if acc.get("sync_mode") in (None, "INITIAL_BACKFILL", "BACKFILLING")
+            and acc.get("sync_status") != "FAILED"
+        ]
+        return len(remaining)
+
     async def run_sync_cycle(self):
         print(f"[WORKER WAKEUP] {datetime.now(timezone.utc)}")
 
@@ -31,11 +79,11 @@ class EmailSyncWorker:
         for account in accounts:
             current_mode = account.get("sync_mode")
             current_status = account.get("sync_status")
-            has_cursor = bool(account.get("sync_cursor"))
 
-            if current_mode in (None, "INITIAL_BACKFILL", "BACKFILLING") and current_status != "FAILED" and not has_cursor:
-                print(
-                    f"[WORKER SKIP] Skipping {account.get('provider_email')} - currently in {current_mode} onboarding phase.")
+            # Strict mode isolation: skip all onboarding/backfill phase accounts.
+            # Onboarding accounts are handled exclusively by run_onboarding_cycle().
+            if current_mode in (None, "INITIAL_BACKFILL", "BACKFILLING") and current_status != "FAILED":
+                print(f"[WORKER SKIP] Skipping {account.get('provider_email')} - managed by onboarding cycle ({current_mode}).")
                 continue
 
             try:

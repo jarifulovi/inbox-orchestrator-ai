@@ -233,10 +233,6 @@ class AuthWebService:
                     raise Exception("Failed to save connected account record")
                 account_id = new_account_res.data[0]["id"]
 
-            if background_tasks:
-                worker = EmailSyncWorker()
-                background_tasks.add_task(worker.run_initial_backfill, account_id)
-
             return RedirectResponse(url=f"{self.FRONTEND_URL}/dashboard/settings?google_connected=true")
 
         except Exception as e:
