@@ -11,6 +11,7 @@ from app.api.task_router import router as task_router
 from app.api.search_router import router as search_router
 from app.api.draft_router import router as draft_router
 from app.api.analytics_router import router as analytics_router
+from app.api.calendar_router import router as calendar_router
 
 app = FastAPI(title="InboxOrchestrator AI Engine")
 app.add_middleware(
@@ -27,6 +28,7 @@ app.include_router(auth_router, tags=["auth"])
 app.include_router(thread_router)
 app.include_router(draft_router)
 app.include_router(task_router)
+app.include_router(calendar_router)
 app.include_router(search_router)
 app.include_router(analytics_router)
 app.include_router(email_router)
