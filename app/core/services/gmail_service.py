@@ -35,9 +35,14 @@ class GmailIngestionService:
             return body_text
         return ""
 
-    def _get_email_details(self, message_id: str) -> dict:
+    def _get_email_details(self, message_id: str) -> dict | None:
         """Fetches and transforms single raw message properties into structured nodes."""
         msg_detail = self.client.users().messages().get(userId='me', id=message_id, format='full').execute()
+
+        label_ids = msg_detail.get('labelIds', [])
+        if 'DRAFT' in label_ids:
+            print(f"[SYNC SKIP DRAFT] Message {message_id} is a draft. Skipping raw ingestion & ML inference.")
+            return None
 
         payload = msg_detail.get('payload', {})
         headers = payload.get('headers', [])
@@ -92,7 +97,8 @@ class GmailIngestionService:
         for msg in messages:
             try:
                 detail = self._get_email_details(msg['id'])
-                processed_emails.append(detail)
+                if detail is not None:
+                    processed_emails.append(detail)
             except Exception as e:
                 err_str = str(e)
                 if "notFound" in err_str or "404" in err_str:
@@ -187,7 +193,8 @@ class GmailIngestionService:
         for msg_id in discovered_msg_ids:
             try:
                 email_detail = self._get_email_details(msg_id)
-                processed_emails.append(email_detail)
+                if email_detail is not None:
+                    processed_emails.append(email_detail)
             except Exception as e:
                 err_str = str(e)
                 if "notFound" in err_str or "404" in err_str:
