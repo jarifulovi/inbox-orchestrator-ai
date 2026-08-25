@@ -52,6 +52,10 @@ class GoogleCalendarWebService:
             raise KeyError(f"Task {task_id} not found or access denied.")
 
         task = task_res.data
+
+        if task.get("status") != "pending":
+            raise ValueError("Only pending tasks can be exported to Google Calendar.")
+
         due_date_str = task.get("due_date")
 
         if due_date_str:

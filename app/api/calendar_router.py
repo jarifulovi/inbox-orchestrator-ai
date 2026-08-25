@@ -18,5 +18,7 @@ async def sync_task_to_google_calendar(
         return res
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Google Calendar sync failed: {str(e)}")
