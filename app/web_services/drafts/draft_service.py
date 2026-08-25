@@ -42,6 +42,14 @@ class DraftWebService:
             thread_id=thread_id
         )
 
+    async def get_account_drafts(self, user_id: str, account_id: str, status_filter: str = "all") -> List[Dict[str, Any]]:
+        """Delegates fetching account-wide drafts with optional status filter to CoreDraftService."""
+        return await self.core_draft_service.get_account_drafts(
+            user_id=user_id,
+            account_id=account_id,
+            status_filter=status_filter
+        )
+
     async def update_manual_draft(
         self,
         user_id: str,

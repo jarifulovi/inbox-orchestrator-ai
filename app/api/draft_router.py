@@ -45,6 +45,26 @@ async def create_thread_draft(
         raise HTTPException(status_code=500, detail=f"Draft creation failed: {str(e)}")
 
 
+@router.get("/drafts")
+async def list_account_drafts(
+    status: Optional[str] = Query("all", description="Filter by draft status: all, pending_approval, draft, sent, failed"),
+    current_user=Depends(get_current_user),
+    account_id: str = Depends(get_verified_account_id),
+    db=Depends(get_supabase_client)
+):
+    """Fetches all drafts for the account, enriched with thread subjects and resolved task details."""
+    service = DraftWebService(db)
+    try:
+        drafts = await service.get_account_drafts(
+            user_id=current_user["id"],
+            account_id=account_id,
+            status_filter=status or "all"
+        )
+        return {"status": "success", "data": drafts}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch drafts: {str(e)}")
+
+
 @router.get("/threads/{thread_id}/drafts")
 async def list_thread_drafts(
     thread_id: str,

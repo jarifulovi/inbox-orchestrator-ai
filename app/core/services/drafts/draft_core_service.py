@@ -207,6 +207,53 @@ class CoreDraftService:
 
         return drafts
 
+    async def get_account_drafts(self, user_id: str, account_id: str, status_filter: str = "all") -> List[Dict[str, Any]]:
+        """
+        Fetches all drafts for an account, enriched with thread subject and resolved task details.
+        Optionally filtered by status ('all', 'pending_approval', 'draft', 'sent', 'failed').
+        """
+        query = self.db.table("email_drafts") \
+            .select("*, email_threads(subject)") \
+            .eq("connected_account_id", account_id) \
+            .order("updated_at", desc=True)
+
+        if status_filter and status_filter != "all":
+            query = query.eq("status", status_filter)
+
+        drafts_res = query.execute()
+        drafts = drafts_res.data or []
+        if not drafts:
+            return []
+
+        # Flatten thread subject
+        for d in drafts:
+            thread_data = d.pop("email_threads", None)
+            d["thread_subject"] = thread_data.get("subject", "") if thread_data else ""
+
+        # Fetch all resolutions with task details
+        draft_ids = [d["id"] for d in drafts]
+        resolutions_res = self.db.table("email_draft_resolutions") \
+            .select("email_draft_id, task_id, tasks(title, intent_label, priority)") \
+            .in_("email_draft_id", draft_ids) \
+            .execute()
+
+        resolutions_by_draft: Dict[str, List[Dict[str, Any]]] = {}
+        for r in (resolutions_res.data or []):
+            task_info = r.pop("tasks", None) or {}
+            entry = {
+                "task_id": r["task_id"],
+                "title": task_info.get("title", ""),
+                "intent_label": task_info.get("intent_label", "other"),
+                "priority": task_info.get("priority", "medium"),
+            }
+            resolutions_by_draft.setdefault(r["email_draft_id"], []).append(entry)
+
+        for d in drafts:
+            d["resolved_tasks"] = resolutions_by_draft.get(d["id"], [])
+            d["resolved_task_ids"] = [t["task_id"] for t in d["resolved_tasks"]]
+
+        return drafts
+
     async def update_draft(
         self,
         user_id: str,
