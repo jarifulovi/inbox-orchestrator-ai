@@ -3,7 +3,7 @@ from typing import List, Optional
 from app.api.deps.account import get_verified_account_id
 from app.api.deps.auth import get_current_user
 from app.core.db.supabase import get_supabase_client
-from app.schemas.draft_schemas import CreateDraftRequest, UpdateDraftRequest, DraftApiResponse
+from app.schemas.draft_schemas import CreateDraftRequest, UpdateDraftRequest, DraftApiResponse, GenerateAIDraftRequest
 from app.web_services.drafts.draft_service import DraftWebService
 
 router = APIRouter(prefix="/api/emails", tags=["drafts"])
@@ -43,6 +43,38 @@ async def create_thread_draft(
         print(f"[DRAFT API ERROR] Manual draft creation failed for thread {thread_id}: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Draft creation failed: {str(e)}")
+
+
+@router.post("/threads/{thread_id}/generate-draft")
+async def generate_thread_ai_draft(
+    thread_id: str,
+    payload: GenerateAIDraftRequest,
+    current_user=Depends(get_current_user),
+    account_id: str = Depends(get_verified_account_id),
+    db=Depends(get_supabase_client)
+):
+    """
+    User-triggered manual AI draft generation using Gemini LLM.
+    Assembles thread summary, latest email snippet, pre-extracted facts, selected tasks,
+    user instructions, and tone directive to return generated email reply text.
+    """
+    print(f"[DRAFT API AI] Triggering manual AI draft generation for thread_id={thread_id}, tone={payload.tone}")
+    service = DraftWebService(db)
+    try:
+        result = await service.generate_ai_draft(
+            user_id=current_user["id"],
+            account_id=account_id,
+            thread_id=thread_id,
+            payload=payload
+        )
+        return {"status": "success", "data": result}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        import traceback
+        print(f"[DRAFT API AI ERROR] Manual AI draft generation failed for thread {thread_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"AI draft generation failed: {str(e)}")
 
 
 @router.get("/drafts")

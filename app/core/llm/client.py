@@ -53,6 +53,24 @@ class LLMClient:
         except Exception as e:
             raise RuntimeWarning(f"LLM Structure Extraction Failed: {str(e)}")
 
+    def generate_text(self, prompt: str, model: str | None = None, temperature: float = 0.7) -> str:
+        """
+        Sends a prompt to Gemini and returns raw string response text.
+        """
+        target_model = model or self.default_model
+        config = types.GenerateContentConfig(
+            temperature=temperature,
+        )
+        try:
+            response = self.client.models.generate_content(
+                model=target_model,
+                contents=prompt,
+                config=config
+            )
+            return response.text or ""
+        except Exception as e:
+            raise RuntimeError(f"LLM Text Generation Failed: {str(e)}")
+
     def close(self):
         """Releases underlying HTTP client network connections."""
         self.client.close()

@@ -75,3 +75,20 @@ class DraftWebService:
             account_id=account_id,
             draft_id=draft_id
         )
+
+    async def generate_ai_draft(
+        self,
+        user_id: str,
+        account_id: str,
+        thread_id: str,
+        payload
+    ) -> Dict[str, Any]:
+        """Delegates manual AI draft reply content generation to CoreDraftService."""
+        return await self.core_draft_service.generate_ai_draft_content(
+            user_id=user_id,
+            account_id=account_id,
+            thread_id=thread_id,
+            ai_instructions=payload.ai_instructions,
+            tone=payload.tone or "Professional",
+            resolved_task_ids=payload.resolved_task_ids
+        )

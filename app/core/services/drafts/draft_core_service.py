@@ -19,6 +19,99 @@ class CoreDraftService:
         self.core_auth = ConnectedAccountService(db_client=db_client)
         self.synchronizer = ThreadWorkflowSynchronizer(db_client)
 
+    async def generate_ai_draft_content(
+        self,
+        user_id: str,
+        account_id: str,
+        thread_id: str,
+        ai_instructions: Optional[str] = None,
+        tone: str = "Professional",
+        resolved_task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Assembles thread context, summary baseline, latest email snippet, email facts,
+        and selected tasks, then calls ThreadLLMService to generate plain text email reply text.
+        """
+        # 1. Fetch thread
+        thread_res = self.db.table("email_threads") \
+            .select("id, subject, summary, connected_account_id") \
+            .eq("id", thread_id) \
+            .eq("connected_account_id", account_id) \
+            .single() \
+            .execute()
+
+        if not thread_res.data:
+            raise KeyError(f"Thread {thread_id} not found or access denied.")
+
+        thread = thread_res.data
+        thread_subject = thread.get("subject") or ""
+        existing_summary = thread.get("summary") or ""
+
+        # 2. Fetch emails in thread (latest first)
+        emails_res = self.db.table("emails") \
+            .select("id, sender, sender_name, snippet, body, received_at") \
+            .eq("thread_id", thread_id) \
+            .order("received_at", desc=True) \
+            .execute()
+
+        emails = emails_res.data or []
+        latest_email = emails[0] if emails else {}
+        latest_sender = latest_email.get("sender") or ""
+        latest_snippet = latest_email.get("body") or latest_email.get("snippet") or ""
+
+        # Truncate snippet to max 600 chars for prompt cleanliness
+        if len(latest_snippet) > 600:
+            latest_snippet = latest_snippet[:600] + "..."
+
+        # 3. Fetch facts for this thread's emails
+        email_ids = [e["id"] for e in emails]
+        facts: List[Dict[str, Any]] = []
+        if email_ids:
+            facts_res = self.db.table("email_facts") \
+                .select("fact_type, source_sentence") \
+                .in_("email_id", email_ids) \
+                .limit(10) \
+                .execute()
+            facts = facts_res.data or []
+
+        # 4. Fetch task titles & intents for resolved_task_ids
+        task_ids = resolved_task_ids or []
+        resolved_tasks: List[Dict[str, Any]] = []
+        if task_ids:
+            tasks_res = self.db.table("tasks") \
+                .select("id, title, intent_label, priority") \
+                .in_("id", task_ids) \
+                .execute()
+            resolved_tasks = tasks_res.data or []
+
+        # 5. Execute LLM prompt generation
+        from app.core.llm.client import LLMClient
+        from app.core.services.threads.thread_llm_service import ThreadLLMService
+
+        llm_client = LLMClient()
+        thread_llm_service = ThreadLLMService(llm_client)
+
+        generated_body = thread_llm_service.generate_manual_draft(
+            thread_subject=thread_subject,
+            existing_summary=existing_summary,
+            latest_email_snippet=latest_snippet,
+            email_facts=facts,
+            resolved_tasks=resolved_tasks,
+            ai_instructions=ai_instructions or "",
+            tone=tone or "Professional"
+        )
+
+        suggested_subject = (
+            thread_subject if thread_subject.lower().startswith("re:")
+            else f"Re: {thread_subject}"
+        )
+
+        return {
+            "body": generated_body,
+            "subject": suggested_subject,
+            "recipient_to": [latest_sender] if latest_sender else []
+        }
+
     async def create_draft(
         self,
         user_id: str,

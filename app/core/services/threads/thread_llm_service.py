@@ -161,3 +161,82 @@ Instructions:
             prompt=prompt,
             response_schema=UnifiedThreadOrchestrationResponse
         )
+
+    def build_manual_draft_prompt(
+        self,
+        thread_subject: str,
+        existing_summary: str,
+        latest_email_snippet: str,
+        email_facts: List[Dict[str, Any]],
+        resolved_tasks: List[Dict[str, Any]],
+        ai_instructions: str,
+        tone: str = "Professional"
+    ) -> str:
+        """Constructs an engineered prompt for user-triggered (manual) AI draft reply generation."""
+        facts_block = json.dumps(email_facts, indent=2) if email_facts else "None"
+        tasks_block = json.dumps(resolved_tasks, indent=2) if resolved_tasks else "None"
+        clean_instr = (ai_instructions or "").strip()
+        instructions_text = clean_instr if clean_instr else "Respond appropriately to the incoming email."
+
+        tone_rules = {
+          "Professional": "Maintain a polished, respectful, and professional executive tone.",
+          "Concise": "Keep the reply extremely brief, clear, and direct (max 2-3 short sentences).",
+          "Friendly": "Use a warm, collaborative, and approachable tone while remaining clear.",
+          "Urgent": "Communicate with a sense of urgency, highlighting deadlines and immediate next steps.",
+        }
+        selected_tone_rule = tone_rules.get(tone, tone_rules["Professional"])
+
+        return f"""
+You are an executive email communication assistant drafting a direct reply on behalf of the user.
+
+Thread Subject: {thread_subject}
+
+Prior Thread Summary:
+{existing_summary or "Initial conversation thread."}
+
+Pre-extracted Action Items / Facts:
+{facts_block}
+
+Latest Received Email (Message you are replying to):
+{latest_email_snippet or "No recent text."}
+
+Tasks Selected for Resolution via this Reply:
+{tasks_block}
+
+User's Specific Directives / Instructions:
+{instructions_text}
+
+Tone Directive: {selected_tone_rule}
+
+Instructions & Constraints:
+1. Write a contextually accurate, high-quality email response addressing the latest received email.
+2. Incorporate the user's specific directives and acknowledge the task resolutions if tasks are specified.
+3. Apply the requested tone ({tone}).
+4. Output ONLY the plain text email response content (greeting, body paragraphs, and sign-off).
+5. Do NOT include robotic meta-commentary, subject headers, or intro lines like "Here is your draft:".
+6. If critical specific details requested by the user are missing, use clean placeholders like [Insert Time] or [Insert Link].
+"""
+
+    def generate_manual_draft(
+        self,
+        thread_subject: str,
+        existing_summary: str,
+        latest_email_snippet: str,
+        email_facts: List[Dict[str, Any]],
+        resolved_tasks: List[Dict[str, Any]],
+        ai_instructions: str,
+        tone: str = "Professional"
+    ) -> str:
+        """Queries Gemini LLM API to generate plain text manual draft reply content."""
+        prompt = self.build_manual_draft_prompt(
+            thread_subject=thread_subject,
+            existing_summary=existing_summary,
+            latest_email_snippet=latest_email_snippet,
+            email_facts=email_facts,
+            resolved_tasks=resolved_tasks,
+            ai_instructions=ai_instructions,
+            tone=tone
+        )
+        raw_text = self.llm.generate_text(prompt=prompt)
+        return raw_text.strip() if raw_text else ""
+

@@ -39,3 +39,10 @@ class DraftResponseData(BaseModel):
 class DraftApiResponse(BaseModel):
     status: str
     data: DraftResponseData
+
+
+class GenerateAIDraftRequest(BaseModel):
+    ai_instructions: Optional[str] = Field(None, description="Custom prompt instructions from user")
+    tone: Optional[str] = Field("Professional", description="Requested email tone: Professional, Concise, Friendly, Urgent")
+    resolved_task_ids: Optional[List[str]] = Field(default_factory=list, description="Array of task UUIDs being addressed/resolved in this draft")
+
