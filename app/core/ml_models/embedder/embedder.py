@@ -1,18 +1,32 @@
+import threading
 import torch
 from transformers import AutoTokenizer, AutoModel
 
+
 class EmailEmbedder:
+    _instance_lock = threading.Lock()
+    _tokenizer = None
+    _model = None
+    _loaded_model_name = None
+
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         """
-        Initializes the tokenizer and model for generating email embeddings.
-        Uses sentence-transformers/all-MiniLM-L6-v2 by default, which is
-        highly optimized and lightweight (approx 120MB).
+        Lightweight wrapper for generating email embeddings.
+        Tokenizer and model weights are lazy-loaded on demand and cached globally as a singleton.
         """
-        print(f"[EmailEmbedder] Initializing local optimized model: {model_name}")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name)
-        # Put model in eval mode for inference
-        self.model.eval()
+        self.model_name = model_name
+
+    @classmethod
+    def _ensure_model_loaded(cls, model_name: str):
+        """Thread-safe lazy initializer for shared tokenizer and model weights."""
+        if cls._model is None or cls._loaded_model_name != model_name:
+            with cls._instance_lock:
+                if cls._model is None or cls._loaded_model_name != model_name:
+                    print(f"[EmailEmbedder] Lazy-loading shared local embedding model: {model_name}")
+                    cls._tokenizer = AutoTokenizer.from_pretrained(model_name)
+                    cls._model = AutoModel.from_pretrained(model_name)
+                    cls._model.eval()
+                    cls._loaded_model_name = model_name
 
     def generate_embeddings(self, texts: list[str]) -> list[list[float]]:
         """
@@ -22,8 +36,10 @@ class EmailEmbedder:
         if not texts:
             return []
 
+        self._ensure_model_loaded(self.model_name)
+
         # Tokenize sentences
-        encoded_input = self.tokenizer(
+        encoded_input = self._tokenizer(
             texts, 
             padding=True, 
             truncation=True, 
@@ -33,7 +49,7 @@ class EmailEmbedder:
 
         # Compute token embeddings
         with torch.no_grad():
-            model_output = self.model(**encoded_input)
+            model_output = self._model(**encoded_input)
 
         # Perform mean pooling
         token_embeddings = model_output[0]  # First element contains token embeddings
