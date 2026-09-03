@@ -45,32 +45,25 @@ class EmailClassifier:
 
 
 if __name__ == "__main__":
+    import time
+    t0 = time.time()
     clf = EmailClassifier()
-    emails = [
-        "Project sync tomorrow Hi, can we schedule a quick sync tomorrow at 3 PM to discuss API integration progress and deployment updates?",
+    print(f"[EmailClassifier] Initialization time: {time.time()-t0:.4f}s")
 
-        "Payment failed alert Your recent transaction was declined due to insufficient balance. Please update your payment method to continue service.",
-
-        "Hey, how have you been? Just wanted to check in and see what you've been up to lately. It’s been a long time!",
-
-        "50% OFF limited time offer Upgrade to premium today and unlock all features at half price. Offer expires tonight.",
-
-        "Your account statement is ready Please review your monthly bank statement and verify all transactions for accuracy.",
-
-        "System maintenance completed All backend services were successfully updated. No downtime was recorded during deployment.",
-
-        "Weekly newsletter: AI trends This week we explore new transformer architectures, open-source LLM tools, and research breakthroughs.",
-
-        "Urgent security alert Unusual login attempt detected from a new device. If this wasn’t you, reset your password immediately.",
-
-        "Invoice for subscription renewal Please find attached your invoice for the next billing cycle. Payment is due within 7 days.",
-
-        "Congratulations! You won a prize Click here immediately to claim your reward. This offer is only valid for a limited time."
+    test_nodes = [
+        {"subject": "Project sync tomorrow", "cleaned_body": "Hi, can we schedule a quick sync tomorrow at 3 PM to discuss API integration progress and deployment updates?"},
+        {"subject": "Payment failed alert", "cleaned_body": "Your recent transaction was declined due to insufficient balance. Please update your payment method to continue service."},
+        {"subject": "Casual catchup", "cleaned_body": "Hey, how have you been? Just wanted to check in and see what you've been up to lately. It's been a long time!"},
+        {"subject": "System maintenance completed", "cleaned_body": "All backend services were successfully updated. No downtime was recorded during deployment."},
+        {"subject": "Security notification", "cleaned_body": "You allowed InboxOrchestratorAI access to some of your Google Account data roversteve772@gmail.com."},
+        {"subject": "Monthly Invoice #1042", "cleaned_body": "Please find attached your monthly invoice for cloud infrastructure hosting fees due on Sept 15."},
+        {"subject": "Q3 Roadmap Strategy Review", "cleaned_body": "Team, please review the attached slide deck for our upcoming Q3 product roadmap meeting."}
     ]
-    results = clf.predict(emails)
+
+    t1 = time.time()
+    results = clf.predict(test_nodes)
+    print(f"[EmailClassifier] Batch prediction latency ({len(test_nodes)} emails): {time.time()-t1:.4f}s\n")
+
     for i, res in enumerate(results):
-        print(f"Email {i}: {res}")
-
-
-    email_body = "Confirm your email addressFollow the link below to confirm this email address and finish signing up.Confirm email address: [https://qyjwniizxidrfrzjxguq.supabase.co/auth/v1/verify?token=f69c0d987a545032aacf9b5b425e5892d7488c14f680f4952c4cad4d&type=signup&redirect_to=http://localhost:3000/](https://qyjwniizxidrfrzjxguq.supabase.co/auth/v1/verify?token=f69c0d987a545032aacf9b5b425e5892d7488c14f680f4952c4cad4d&type=signup&redirect_to=http://localhost:3000/)You're receiving this email because you signed up for an application powered by Supabase.Opt out of these emails: [https://supabase.com/opt-out/qyjwniizxidrfrzjxguq](https://supabase.com/opt-out/qyjwniizxidrfrzjxguq)"
+        print(f"Sample {i+1} | Subject: '{test_nodes[i]['subject']}' -> Label: '{res['label']}' (ID: {res['label_id']}, Confidence: {res['confidence']})")
 

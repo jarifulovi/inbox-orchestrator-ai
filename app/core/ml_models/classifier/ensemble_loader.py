@@ -9,11 +9,7 @@ from typing import Dict, Optional, List
 
 from app.core.schemas.email_classifications import EmailClassificationPrediction
 
-ARTIFACTS = [
-    ("best_model_fold_2_best", 1),
-    ("best_model_fold_5_better", 1),
-    ("best_model_fold_4_stable", 1),
-]
+BEST_MODEL_FOLDER = "best_model_fold_2_best"
 
 LABELS = {
     0: "financial",
@@ -28,37 +24,34 @@ ARTIFACTS_DIR = BASE_PATH / "artifacts"
 
 class EnsembleEmailClassifier:
     def __init__(self):
-        self.models: list[torch.nn.Module] = []
-        self.weights: list[int] = []
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
-        first_model_dir = ARTIFACTS_DIR / ARTIFACTS[0][0]
-        tokenizer: Optional[PreTrainedTokenizer] = AutoTokenizer.from_pretrained(str(first_model_dir))
+        model_dir = ARTIFACTS_DIR / BEST_MODEL_FOLDER
+        print(f"[EmailClassifier] Loading single optimized classifier model: {BEST_MODEL_FOLDER}")
+
+        tokenizer: Optional[PreTrainedTokenizer] = AutoTokenizer.from_pretrained(str(model_dir))
         if tokenizer is None:
-            raise RuntimeError(f"Failed to load tokenizer from {first_model_dir}")
+            raise RuntimeError(f"Failed to load tokenizer from {model_dir}")
         self.tokenizer: PreTrainedTokenizer = tokenizer
+
+        self.model: torch.nn.Module = AutoModelForSequenceClassification.from_pretrained(
+            str(model_dir)
+        )
         self.labels: Dict[int, str] = LABELS.copy()
-        for folder, weight in ARTIFACTS:
-            model_dir = ARTIFACTS_DIR / folder
-            model: torch.nn.Module = AutoModelForSequenceClassification.from_pretrained(
-                str(model_dir)
-            )
-            if not self.models:
-                # Prefer model-provided labels when available.
-                id2label = getattr(model.config, "id2label", None)
-                if id2label:
-                    self.labels = {int(k): str(v) for k, v in id2label.items()}
-            model.to(self.device)
-            model.eval()
-            self.models.append(model)
-            self.weights.append(weight)
+        id2label = getattr(self.model.config, "id2label", None)
+        if id2label:
+            self.labels = {int(k): str(v) for k, v in id2label.items()}
+
+        self.model.to(self.device)
+        self.model.eval()
 
     def predict(self, email_texts: List[str]) -> List[EmailClassificationPrediction]:
-        if self.tokenizer is None:
-            raise RuntimeError("Tokenizer is not loaded.")
+        if self.tokenizer is None or self.model is None:
+            raise RuntimeError("Classifier model/tokenizer is not loaded.")
         if not email_texts:
             return []
+
         inputs = self.tokenizer(
             email_texts,
             return_tensors="pt",
@@ -67,23 +60,21 @@ class EnsembleEmailClassifier:
             max_length=512
         )
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        all_probs = []
-        for model, weight in zip(self.models, self.weights):
-            with torch.inference_mode():
-                outputs = model(**inputs)
-                probs = torch.softmax(outputs.logits, dim=1)
-                all_probs.append(probs * weight)
-        weighted_probs = torch.stack(all_probs).sum(dim=0)
-        weighted_probs /= sum(self.weights)
-        final_preds = torch.argmax(weighted_probs, dim=1).tolist()
-        confidences = torch.max(weighted_probs, dim=1).values.tolist()
-        probabilities = weighted_probs.tolist()
+
+        with torch.inference_mode():
+            outputs = self.model(**inputs)
+            probs = torch.softmax(outputs.logits, dim=1)
+
+        final_preds = torch.argmax(probs, dim=1).tolist()
+        confidences = torch.max(probs, dim=1).values.tolist()
+        probabilities = probs.tolist()
+
         results: List[EmailClassificationPrediction] = []
-        for pred, conf, probs in zip(final_preds, confidences, probabilities):
+        for pred, conf, probs_list in zip(final_preds, confidences, probabilities):
             label_id = int(pred)
             probability_map = {
-                self.labels.get(i, str(i)): float(prob)
-                for i, prob in enumerate(probs)
+                self.labels.get(i, str(i)): float(p)
+                for i, p in enumerate(probs_list)
             }
             results.append(
                 EmailClassificationPrediction(
