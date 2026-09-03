@@ -1,5 +1,5 @@
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.core.llm.client import LLMClient
 from app.core.schemas.tasks import UnifiedThreadOrchestrationResponse
 
@@ -39,7 +39,8 @@ class ThreadLLMService:
         actions_payload: List[Dict[str, Any]],
         email_manifest: List[Dict[str, Any]],
         anchor_date: str,
-        enable_auto_draft: bool = False
+        enable_auto_draft: bool = False,
+        summary_format: str = "paragraph"
     ) -> str:
         """Constructs a consolidated prompt for Gemini to analyze the thread's initial tasks and metadata."""
         auto_draft_instruction = ""
@@ -51,6 +52,13 @@ class ThreadLLMService:
    - If sufficient context exists, set `auto_draft.can_generate = True`, provide `recipient_to`, `subject` (e.g. 'Re: ...'), and draft `body`.
    - Use clear placeholders like [Insert Meeting Time] for minor missing variables.
 """
+
+        summary_style_text = "2-4 concise executive paragraph sentences"
+        if summary_format == "bullets":
+            summary_style_text = "3-4 concise bullet points separated by line breaks"
+        elif summary_format == "concise":
+            summary_style_text = "1-2 sharp, highly concise summary sentences"
+
         return f"""
 You are an advanced email operations manager.
 Subject: {thread_subject}
@@ -66,7 +74,7 @@ Instructions:
    - Leave `thread_summary`, `thread_priority`, `does_need_auto_draft`, and `auto_draft` as null (do not generate them).
 3. If `has_actionable_tasks` is True:
    - Evaluate the action items. Set `is_actionable_task` to True only if it requires user action. Generate the actionable `title`, `intent_label`, `priority`, and `due_date_iso` (relative to anchor date).
-   - Generate `thread_summary` (2-4 concise sentences), `thread_priority` ('High', 'Medium', 'Low'), and `does_need_auto_draft` (True/False).
+   - Generate `thread_summary` ({summary_style_text}), `thread_priority` ('High', 'Medium', 'Low'), and `does_need_auto_draft` (True/False).
 {auto_draft_instruction}
 """
 
@@ -122,7 +130,9 @@ Instructions:
         actions_payload: List[Dict[str, Any]],
         email_manifest: List[Dict[str, Any]],
         anchor_date: str,
-        enable_auto_draft: bool = False
+        enable_auto_draft: bool = False,
+        summary_format: str = "paragraph",
+        model: Optional[str] = None
     ) -> UnifiedThreadOrchestrationResponse:
         """Queries Gemini using the unified response schema to analyze thread actions and tasks."""
         prompt = self.build_orchestration_prompt(
@@ -130,11 +140,13 @@ Instructions:
             actions_payload=actions_payload,
             email_manifest=email_manifest,
             anchor_date=anchor_date,
-            enable_auto_draft=enable_auto_draft
+            enable_auto_draft=enable_auto_draft,
+            summary_format=summary_format
         )
         return self.llm.generate_structured_json(
             prompt=prompt,
-            response_schema=UnifiedThreadOrchestrationResponse
+            response_schema=UnifiedThreadOrchestrationResponse,
+            model=model
         )
 
     def orchestrate_thread_update_via_llm(
@@ -145,7 +157,9 @@ Instructions:
         new_actions_payload: List[Dict[str, Any]],
         new_email_snippet: str,
         anchor_date: str,
-        enable_auto_draft: bool = False
+        enable_auto_draft: bool = False,
+        summary_format: str = "paragraph",
+        model: Optional[str] = None
     ) -> UnifiedThreadOrchestrationResponse:
         """Queries Gemini for delta analysis on an existing thread when a new email arrives."""
         prompt = self.build_thread_update_prompt(
@@ -159,7 +173,8 @@ Instructions:
         )
         return self.llm.generate_structured_json(
             prompt=prompt,
-            response_schema=UnifiedThreadOrchestrationResponse
+            response_schema=UnifiedThreadOrchestrationResponse,
+            model=model
         )
 
     def build_manual_draft_prompt(

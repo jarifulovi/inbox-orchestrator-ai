@@ -6,7 +6,7 @@ DEFAULT_SETTINGS = {
     "enable_auto_task": True,
     "enable_auto_draft": False,
     "summary_format": "paragraph",
-    "ai_model": "gemini-3.5-flash"
+    "ai_model": "gemini-3.6-flash"
 }
 
 

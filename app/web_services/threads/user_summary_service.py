@@ -27,7 +27,8 @@ class UserThreadSummaryService:
         emails: List[Dict[str, Any]],
         facts: List[Dict[str, Any]],
         pending_tasks: List[Dict[str, Any]],
-        existing_summary: Optional[str] = None
+        existing_summary: Optional[str] = None,
+        summary_format: str = "paragraph"
     ) -> str:
         """
         Constructs prompt partitioning recent vs historical emails into a hybrid context payload.
@@ -97,6 +98,12 @@ class UserThreadSummaryService:
         # Format Existing Summary
         summary_refinement = f"Previous Summary:\n{existing_summary}\n" if existing_summary else ""
 
+        summary_style_text = "3 to 5 concise sentences (max 120 words)"
+        if summary_format == "bullets":
+            summary_style_text = "3 to 4 concise bullet points separated by line breaks"
+        elif summary_format == "concise":
+            summary_style_text = "1 to 2 sharp, highly concise sentences"
+
         # Construct Final Prompt
         return f"""
 You are an expert executive email assistant synthesizing an email thread into a clear summary.
@@ -120,7 +127,7 @@ SECTION 2: HISTORICAL CONVERSATION BACKGROUND (FACTS & CAPPED SNIPPETS)
 INSTRUCTIONS FOR SUMMARY GENERATION:
 ================================================================================
 1. Synthesize the entire conversation thread into a clean `summary`.
-2. **STRICT SIZE BOUNDARY**: The `summary` MUST be between 3 to 5 concise sentences (max 120 words). Focus on key topics discussed, current decisions/status, and what action remains. Avoid long text walls.
+2. **STRICT SIZE BOUNDARY**: The `summary` MUST be {summary_style_text}. Focus on key topics discussed, current decisions/status, and what action remains. Avoid long text walls.
 3. Determine `priority`: 'high', 'medium', or 'low' based on urgency and importance.
 4. Provide `key_takeaways`: exactly 2 to 3 concise bullet point key takeaways.
 """
@@ -131,7 +138,9 @@ INSTRUCTIONS FOR SUMMARY GENERATION:
         emails: List[Dict[str, Any]],
         facts: List[Dict[str, Any]],
         pending_tasks: List[Dict[str, Any]],
-        existing_summary: Optional[str] = None
+        existing_summary: Optional[str] = None,
+        summary_format: str = "paragraph",
+        model: Optional[str] = None
     ) -> UserThreadSummaryOutput:
         """
         Executes summary generation via Gemini LLM with Pydantic structured output.
@@ -149,13 +158,15 @@ INSTRUCTIONS FOR SUMMARY GENERATION:
             emails=emails,
             facts=facts,
             pending_tasks=pending_tasks,
-            existing_summary=existing_summary
+            existing_summary=existing_summary,
+            summary_format=summary_format
         )
 
         try:
             output = self.llm.generate_structured_json(
                 prompt=prompt,
-                response_schema=UserThreadSummaryOutput
+                response_schema=UserThreadSummaryOutput,
+                model=model
             )
             return output
         except Exception as e:
@@ -169,15 +180,22 @@ INSTRUCTIONS FOR SUMMARY GENERATION:
         existing_summary: Optional[str] = None
     ) -> UserThreadSummaryOutput:
         """Generates a rule-based fallback summary when LLM is unavailable."""
+        import html
         newest = emails[0] if emails else {}
         body_text = newest.get("body") if isinstance(newest.get("body"), str) else ""
-        snippet = newest.get("snippet") or (body_text[:200] if body_text else "")
-        fallback_text = (
-            existing_summary or 
-            f"Thread regarding '{thread_subject}' containing {len(emails)} message(s). Latest update from {newest.get('sender_name') or 'sender'}: {snippet[:150]}..."
-        )
+        raw_snippet = newest.get("snippet") or (body_text[:300] if body_text else "")
+        cleaned_snippet = html.unescape(raw_snippet).strip()
+
+        if existing_summary:
+            fallback_text = existing_summary
+        elif cleaned_snippet:
+            fallback_text = cleaned_snippet
+        else:
+            fallback_text = f"Email discussion regarding {thread_subject}."
+
+        sender_label = newest.get("sender_name") or newest.get("sender") or "sender"
         return UserThreadSummaryOutput(
-            summary=fallback_text[:400],
+            summary=fallback_text,
             priority="medium",
-            key_takeaways=[f"{len(emails)} messages in thread.", f"Latest update from {newest.get('sender_name') or 'sender'}."]
+            key_takeaways=[f"Latest update from {sender_label}."]
         )

@@ -415,7 +415,7 @@ class ThreadWebService:
         await worker._process_account(account, skip_ml=True)
         return True
 
-    async def generate_user_thread_summary(self, thread_id: str, account_id: str) -> dict:
+    async def generate_user_thread_summary(self, thread_id: str, account_id: str, auth_user: Optional[dict] = None) -> dict:
         """
         Executes user-initiated thread summary generation using UserThreadSummaryService.
         Persists updated summary, priority, summary_generated_at, and context_memory to DB.
@@ -463,6 +463,12 @@ class ThreadWebService:
         thread_tasks = tasks_res.data or []
         pending_tasks = [t for t in thread_tasks if t.get("status") == "pending"]
 
+        # Read profile settings if available
+        user_metadata = (auth_user.get("user_metadata") if auth_user else {}) or {}
+        raw_settings = user_metadata.get("settings") or {}
+        summary_format = raw_settings.get("summary_format", "paragraph")
+        ai_model = raw_settings.get("ai_model", "gemini-3.6-flash")
+
         # 4. Execute user summary generation via UserThreadSummaryService
         summary_service = UserThreadSummaryService()
         output = summary_service.generate_summary_via_llm(
@@ -470,7 +476,9 @@ class ThreadWebService:
             emails=emails,
             facts=facts,
             pending_tasks=pending_tasks,
-            existing_summary=thread.get("summary")
+            existing_summary=thread.get("summary"),
+            summary_format=summary_format,
+            model=ai_model
         )
 
         # 5. Build updated context_memory and persist to email_threads DB table

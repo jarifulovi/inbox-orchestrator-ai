@@ -16,7 +16,7 @@ class LLMClient:
 
         # Initialize sync client (use context managers where possible)
         self.client = genai.Client()
-        self.default_model = "gemini-3.5-flash"
+        self.default_model = "gemini-3.6-flash"
         # print("Available models:", [model.name for model in self.client.models.list()])
 
 

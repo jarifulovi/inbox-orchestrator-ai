@@ -13,7 +13,7 @@ class ThreadStatusUpdateResponse(BaseModel):
 
 
 class UserThreadSummaryOutput(BaseModel):
-    summary: str = Field(..., description="Concise 3-5 sentence summary of the email discussion, key points, and current state.")
+    summary: str = Field(..., description="The summary of the email discussion formatted strictly according to requested style (bullet points, executive paragraph, or concise summary).")
     priority: Optional[str] = Field("medium", description="Priority level: 'high', 'medium', or 'low'.")
     key_takeaways: list[str] = Field(default_factory=list, description="2-3 bullet point key takeaways.")
 

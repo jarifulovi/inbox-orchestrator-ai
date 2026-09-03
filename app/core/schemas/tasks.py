@@ -103,7 +103,7 @@ class UnifiedThreadOrchestrationResponse(BaseModel):
     )
     thread_summary: Optional[str] = Field(
         None,
-        description="Concise 2-3 sentence thread summary. Set to null if has_actionable_tasks is False."
+        description="Thread summary formatted strictly according to requested summary format (bullet points, executive paragraph, or concise summary). Set to null if has_actionable_tasks is False."
     )
     thread_priority: Optional[str] = Field(
         None,

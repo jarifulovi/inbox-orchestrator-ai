@@ -217,6 +217,8 @@ class ThreadOrchestrator:
         user_settings = self._fetch_user_settings(user_id)
         user_allows_auto_draft = user_settings.get("enable_auto_draft", False)
         enable_auto_task = user_settings.get("enable_auto_task", True)
+        summary_format = user_settings.get("summary_format", "paragraph")
+        ai_model = user_settings.get("ai_model", "gemini-3.5-flash")
 
         # Enable auto-draft prompt toggle if user settings allow it, incoming external email on actionable thread without active draft
         enable_auto_draft = user_allows_auto_draft and is_external_sender and no_active_draft
@@ -232,7 +234,9 @@ class ThreadOrchestrator:
                 new_actions_payload=facts_payload,
                 new_email_snippet=new_email_snippet,
                 anchor_date=default_anchor,
-                enable_auto_draft=enable_auto_draft
+                enable_auto_draft=enable_auto_draft,
+                summary_format=summary_format,
+                model=ai_model
             )
         else:
             email_manifest = self.orchestration_service.prepare_email_manifest(emails)
@@ -241,7 +245,9 @@ class ThreadOrchestrator:
                 actions_payload=facts_payload,
                 email_manifest=email_manifest,
                 anchor_date=default_anchor,
-                enable_auto_draft=enable_auto_draft
+                enable_auto_draft=enable_auto_draft,
+                summary_format=summary_format,
+                model=ai_model
             )
 
         if not response.has_actionable_tasks:

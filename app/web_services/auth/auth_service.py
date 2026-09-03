@@ -91,7 +91,12 @@ class AuthWebService:
         if not user:
             raise Exception("AUTH_INVALID_TOKEN")
 
-        return {"id": user.id, "email": user.email, "role": user.role}
+        return {
+            "id": user.id,
+            "email": user.email,
+            "role": user.role,
+            "user_metadata": user.user_metadata or {}
+        }
 
     async def generate_google_auth_url(self, auth_user: dict, login_hint: str | None = None) -> GoogleAuthUrlResponse:
         try:
