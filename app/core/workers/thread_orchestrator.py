@@ -116,6 +116,16 @@ class ThreadOrchestrator:
     # PRIVATE HELPER METHODS
     # -------------------------------------------------------------------------
 
+    def _fetch_user_settings(self, user_id: str) -> dict:
+        try:
+            res = self.db.auth.admin.get_user_by_id(user_id)
+            if res and hasattr(res, "user") and res.user:
+                meta = res.user.user_metadata or {}
+                return meta.get("settings") or {}
+        except Exception as e:
+            print(f"[ThreadOrchestrator] Failed to fetch user_settings for {user_id}: {e}")
+        return {}
+
     def _fetch_account_metadata(self, account_id: str) -> dict | None:
         res = self.db.table("connected_accounts") \
             .select("user_id, provider_email") \
@@ -203,8 +213,13 @@ class ThreadOrchestrator:
             .execute()
         no_active_draft = not bool(active_draft_res.data)
 
-        # Enable auto-draft prompt toggle if incoming external email on actionable thread without active draft
-        enable_auto_draft = is_external_sender and no_active_draft
+        # Read user profile AI settings
+        user_settings = self._fetch_user_settings(user_id)
+        user_allows_auto_draft = user_settings.get("enable_auto_draft", False)
+        enable_auto_task = user_settings.get("enable_auto_task", True)
+
+        # Enable auto-draft prompt toggle if user settings allow it, incoming external email on actionable thread without active draft
+        enable_auto_draft = user_allows_auto_draft and is_external_sender and no_active_draft
 
         if existing_summary and len(emails) > 1:
             pending_tasks_payload = [{"id": t["id"], "title": t["title"]} for t in pending_tasks]
@@ -250,7 +265,7 @@ class ThreadOrchestrator:
                 account_id=account_id
             )
 
-            if new_tasks:
+            if new_tasks and enable_auto_task:
                 self.db.table("tasks") \
                     .upsert(new_tasks, on_conflict="user_id, action_fingerprint") \
                     .execute()
