@@ -45,3 +45,7 @@ class GoogleCallbackResponse(BaseModel):
     status: str
     connected_account_id: str
     provider_email: str
+
+
+class ToggleAccountSyncPayload(BaseModel):
+    is_active: bool

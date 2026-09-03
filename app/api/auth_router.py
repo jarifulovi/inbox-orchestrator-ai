@@ -4,7 +4,7 @@ from supabase import Client
 
 from app.api.deps.auth import get_current_user
 from app.core.db.supabase import get_supabase_client
-from app.schemas.auth_schemas import MeResponseSchema, GoogleAuthUrlResponse, GoogleCallbackResponse
+from app.schemas.auth_schemas import MeResponseSchema, GoogleAuthUrlResponse, GoogleCallbackResponse, ToggleAccountSyncPayload
 from app.web_services.auth import AuthWebService
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -46,3 +46,15 @@ async def google_callback(
         state=state,
         background_tasks=background_tasks
     )
+
+
+@router.patch("/accounts/{account_id}/sync")
+async def toggle_account_sync(
+    account_id: str,
+    payload: ToggleAccountSyncPayload,
+    auth_user: dict = Depends(get_current_user),
+    db: Client = Depends(get_supabase_client)
+):
+    service = AuthWebService(db_client=db)
+    user_id = auth_user.get("id")
+    return await service.toggle_account_sync(user_id=user_id, account_id=account_id, is_active=payload.is_active)

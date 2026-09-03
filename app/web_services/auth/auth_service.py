@@ -317,3 +317,30 @@ class AuthWebService:
             return None
 
         return response.data.get("refresh_token")
+
+    async def toggle_account_sync(self, user_id: str, account_id: str, is_active: bool) -> dict:
+        """
+        Updates is_active status for a specific user-owned connected mailbox.
+        """
+        res = self.db.table("connected_accounts") \
+            .select("id, is_active, provider_email") \
+            .eq("id", account_id) \
+            .eq("user_id", user_id) \
+            .single() \
+            .execute()
+
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Connected account not found or access denied.")
+
+        updated_res = self.db.table("connected_accounts") \
+            .update({"is_active": is_active}) \
+            .eq("id", account_id) \
+            .eq("user_id", user_id) \
+            .execute()
+
+        return {
+            "status": "success",
+            "account_id": account_id,
+            "is_active": is_active,
+            "account": (updated_res.data[0] if updated_res.data else {})
+        }
