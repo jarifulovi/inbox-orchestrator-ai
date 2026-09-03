@@ -22,7 +22,7 @@ BASE_PATH = Path(__file__).parent
 ARTIFACTS_DIR = BASE_PATH / "artifacts"
 
 
-class EnsembleEmailClassifier:
+class ClassifierModelLoader:
     def __init__(self):
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"

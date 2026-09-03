@@ -1,22 +1,17 @@
-try:
-    from .ensemble_loader import EnsembleEmailClassifier
-    from .preprocessor import EmailPreprocessor
-except ImportError:
-    from app.core.ml_models.classifier.ensemble_loader import EnsembleEmailClassifier
-    from app.core.ml_models.classifier.preprocessor import EmailPreprocessor
-
+from app.core.ml_models.classifier.model_loader import ClassifierModelLoader
+from app.core.ml_models.classifier.preprocessor import EmailPreprocessor
 from app.core.schemas.email_classifications import EmailClassificationPrediction
 
 
 class EmailClassifier:
     def __init__(self):
-        self.ensemble = EnsembleEmailClassifier()
+        self.model_loader = ClassifierModelLoader()
         self.preprocess = EmailPreprocessor()
 
     def predict(self, safe_nodes: list[dict]) -> list[EmailClassificationPrediction]:
         """
         Extracts [Subject + Body] matrices from safe nodes, cleanses them via
-        the Preprocessor, and delivers batch classifications using the ensemble.
+        the Preprocessor, and delivers batch classifications using the ClassifierModelLoader.
         """
         combined_texts = []
         for node in safe_nodes:
@@ -40,7 +35,7 @@ class EmailClassifier:
 
         # 4. Pass the combined string array to your original internal pipelines
         processed_texts = self.preprocess.batch_preprocess(combined_texts)
-        return self.ensemble.predict(processed_texts)
+        return self.model_loader.predict(processed_texts)
 
 
 
