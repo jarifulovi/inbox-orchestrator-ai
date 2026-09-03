@@ -1,0 +1,33 @@
+# =====================================================================
+# INBOXORCHESTRATOR AI - RENDER PRODUCTION BLUEPRINT MANIFEST
+# =====================================================================
+
+services:
+  # 1. FastAPI Web Service (REST API Delivery)
+  - type: web
+    name: inbox-orchestrator-backend
+    env: python
+    region: singapore
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHON_VERSION
+        value: 3.11.0
+
+  # 2. Integrated Background Worker Daemon (Email Sync, ML Recovery & Thread Orchestration)
+  - type: worker
+    name: inbox-orchestrator-worker
+    env: python
+    region: singapore
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 -m app.worker_runner
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHON_VERSION
+        value: 3.11.0
