@@ -48,7 +48,9 @@ class ThreadCoreService:
         actions_payload: List[Dict[str, Any]],
         email_manifest: List[Dict[str, Any]],
         anchor_date: str,
-        enable_auto_draft: bool = False
+        enable_auto_draft: bool = False,
+        summary_format: str = "paragraph",
+        model: Optional[str] = None
     ) -> UnifiedThreadOrchestrationResponse:
         """Delegates initial LLM orchestration to ThreadLLMService."""
         return self.llm_service.orchestrate_thread_via_llm(
@@ -56,7 +58,9 @@ class ThreadCoreService:
             actions_payload=actions_payload,
             email_manifest=email_manifest,
             anchor_date=anchor_date,
-            enable_auto_draft=enable_auto_draft
+            enable_auto_draft=enable_auto_draft,
+            summary_format=summary_format,
+            model=model
         )
 
     def orchestrate_thread_update_via_llm(
@@ -67,7 +71,9 @@ class ThreadCoreService:
         new_actions_payload: List[Dict[str, Any]],
         new_email_snippet: str,
         anchor_date: str,
-        enable_auto_draft: bool = False
+        enable_auto_draft: bool = False,
+        summary_format: str = "paragraph",
+        model: Optional[str] = None
     ) -> UnifiedThreadOrchestrationResponse:
         """Delegates delta update LLM orchestration to ThreadLLMService."""
         return self.llm_service.orchestrate_thread_update_via_llm(
@@ -77,7 +83,9 @@ class ThreadCoreService:
             new_actions_payload=new_actions_payload,
             new_email_snippet=new_email_snippet,
             anchor_date=anchor_date,
-            enable_auto_draft=enable_auto_draft
+            enable_auto_draft=enable_auto_draft,
+            summary_format=summary_format,
+            model=model
         )
 
     def prepare_facts_payload(
