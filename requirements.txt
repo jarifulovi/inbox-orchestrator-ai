@@ -1,4 +1,7 @@
 fastapi
+uvicorn
+gunicorn
+google-genai
 transformers
 torch
 supabase
