@@ -75,7 +75,7 @@ cython_debug/
 .idea/
 
 # Local env
-.env
+.env*
 .venv
 env/
 venv/

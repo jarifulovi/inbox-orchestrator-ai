@@ -15,11 +15,14 @@ from app.api.calendar_router import router as calendar_router
 from app.api.settings_router import router as settings_router
 
 app = FastAPI(title="InboxOrchestrator AI Engine")
+raw_frontend_urls = os.getenv("FRONTEND_URL", "http://localhost:3000")
+allowed_origins = [url.strip() for url in raw_frontend_urls.split(",") if url.strip()]
+cors_regex = os.getenv("CORS_ORIGIN_REGEX", r"https://.*\.vercel\.app")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        os.getenv("FRONTEND_URL"),
-    ],
+    allow_origins=allowed_origins,
+    allow_origin_regex=cors_regex if cors_regex else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
