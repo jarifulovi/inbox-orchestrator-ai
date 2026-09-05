@@ -15,6 +15,7 @@ async def list_threads(
         workflow_status: Optional[str] = Query(None),
         priority: Optional[str] = Query(None),
         q: Optional[str] = Query(None),
+        category: Optional[str] = Query(None),
         account_id: str = Depends(get_verified_account_id),
         db=Depends(get_supabase_client)
 ):
@@ -25,7 +26,8 @@ async def list_threads(
         offset=offset,
         workflow_status=workflow_status,
         priority=priority,
-        q=q
+        q=q,
+        category=category
     )
     return {"threads": threads}
 

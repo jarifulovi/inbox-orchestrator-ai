@@ -23,11 +23,12 @@ class ThreadWebService:
             offset: int = 0,
             workflow_status: Optional[str] = None,
             priority: Optional[str] = None,
-            q: Optional[str] = None
+            q: Optional[str] = None,
+            category: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Fetches parent thread records dynamically with status/priority/keyword filtering,
-        resolves the latest email sender & security trust level, bulk-counts pending tasks,
+        Fetches parent thread records dynamically with status/priority/category/keyword filtering,
+        resolves the latest email sender & security trust level & category, bulk-counts pending tasks,
         and returns real priority & workflow metadata with safe defaults.
         """
         # 1. Fetch account email
@@ -45,13 +46,52 @@ class ThreadWebService:
                 .select("*") \
                 .eq("connected_account_id", account_id)
 
-            if workflow_status and workflow_status.strip() and workflow_status.strip().lower() != "all":
-                query = query.eq("workflow_status", workflow_status.strip().lower())
+            has_search = bool(q and q.strip())
 
-            if priority and priority.strip() and priority.strip().lower() != "all":
-                query = query.eq("priority", priority.strip().lower())
+            # When search query 'q' is NOT active, apply workflow status, priority, and category filters.
+            # When 'q' IS active, search overrides all active filters to search globally across all threads.
+            if not has_search:
+                if workflow_status and workflow_status.strip() and workflow_status.strip().lower() != "all":
+                    query = query.eq("workflow_status", workflow_status.strip().lower())
 
-            if q and q.strip():
+                if priority and priority.strip() and priority.strip().lower() != "all":
+                    query = query.eq("priority", priority.strip().lower())
+
+                if category and category.strip() and category.strip().lower() != "all":
+                    cat_clean = category.strip().lower()
+                    try:
+                        if cat_clean == "focused":
+                            cat_emails_res = self.db.table("emails") \
+                                .select("thread_id") \
+                                .eq("connected_account_id", account_id) \
+                                .in_("category", ["work_professional", "financial", "system_automated"]) \
+                                .limit(300) \
+                                .execute()
+                        elif cat_clean == "noise":
+                            cat_emails_res = self.db.table("emails") \
+                                .select("thread_id") \
+                                .eq("connected_account_id", account_id) \
+                                .or_("category.eq.others,category.is.null") \
+                                .limit(300) \
+                                .execute()
+                        else:
+                            cat_emails_res = self.db.table("emails") \
+                                .select("thread_id") \
+                                .eq("connected_account_id", account_id) \
+                                .eq("category", cat_clean) \
+                                .limit(300) \
+                                .execute()
+
+                        cat_thread_ids = list({str(e["thread_id"]) for e in (cat_emails_res.data or []) if e.get("thread_id")})
+                        if cat_thread_ids:
+                            query = query.in_("id", cat_thread_ids)
+                        else:
+                            # No matching category threads found
+                            return []
+                    except Exception as cat_err:
+                        print(f"[THREADS CATEGORY FILTER WARNING] Pre-query failed: {cat_err}")
+
+            if has_search:
                 keyword = q.strip()
                 # Pre-fetch matching thread IDs from emails table where sender or sender_name matches keyword
                 matched_thread_ids = set()
@@ -88,13 +128,13 @@ class ThreadWebService:
         if not thread_ids:
             return []
 
-        # 3. Bulk fetch emails for these threads to resolve latest sender info, latest email security_trust_level, and message_count
+        # 3. Bulk fetch emails for these threads to resolve latest sender info, latest email security_trust_level, category, and message_count
         emails_by_thread = {}
         latest_email_info = {}
 
         try:
             emails_res = self.db.table("emails") \
-                .select("id, thread_id, sender, sender_name, received_at, ai_metadata") \
+                .select("id, thread_id, sender, sender_name, received_at, category, ai_metadata") \
                 .in_("thread_id", thread_ids) \
                 .order("received_at", desc=True) \
                 .execute()
@@ -118,11 +158,13 @@ class ThreadWebService:
 
                     sec_meta = (em.get("ai_metadata") or {}).get("security_analysis") or {}
                     s_trust = sec_meta.get("security_trust_level") or "unverified"
+                    cat = em.get("category") or "others"
 
                     latest_email_info[t_id] = {
                         "sender_email": s_email,
                         "sender_name": s_name,
                         "security_trust_level": s_trust,
+                        "category": cat,
                         "latest_email_id": em.get("id")
                     }
 
@@ -176,6 +218,7 @@ class ThreadWebService:
                 "priority": prio,
                 "workflow_status": w_status,
                 "security_trust_level": e_info.get("security_trust_level") or "unverified",
+                "category": e_info.get("category") or "others",
                 "tasks_count": task_count,
                 "pending_task_count": task_count,
                 "timestamp": last_date,
