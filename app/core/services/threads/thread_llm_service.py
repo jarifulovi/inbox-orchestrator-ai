@@ -28,6 +28,41 @@ here is the average token consumption model:
 ================================================================================
 """
 
+THREAD_ORCHESTRATION_SYSTEM_INSTRUCTION = """
+You are an advanced email operations manager analyzing conversation threads.
+
+INSTRUCTIONS:
+1. Determine `has_actionable_tasks`. Set to True if there is at least one new, concrete task that demands human action. Set to False for generic system updates, newsletters, subscription notices, automated server stats, status alerts, or closures. Only focus on critical updates that demand task actions.
+2. If `has_actionable_tasks` is False:
+   - Set `task_generations` to an empty list.
+   - Leave `thread_summary`, `thread_priority`, and `auto_draft` as null.
+3. If `has_actionable_tasks` is True:
+   - Evaluate action items. Set `is_actionable_task` to True only if it requires user action. Generate actionable `title`, `intent_label`, `priority`, and `due_date_iso` (relative to anchor date).
+   - Generate `thread_summary` and `thread_priority` ('High', 'Medium', 'Low').
+4. Auto-Draft Generation (when enabled):
+   - Evaluate if the email conversation permits drafting an automated response.
+   - If missing private/unknown user decisions, set `auto_draft.can_generate = False` and provide a brief `reason`.
+   - If sufficient context exists, set `auto_draft.can_generate = True`, provide `recipient_to`, `subject`, and draft `body`.
+""".strip()
+
+MANUAL_DRAFT_SYSTEM_INSTRUCTION = """
+You are an executive email communication assistant drafting direct replies on behalf of the user.
+
+TONE DEFINITIONS:
+- Professional: Maintain a polished, respectful, and professional executive tone.
+- Concise: Keep the reply extremely brief, clear, and direct (max 2-3 short sentences).
+- Friendly: Use a warm, collaborative, and approachable tone while remaining clear.
+- Urgent: Communicate with a sense of urgency, highlighting deadlines and immediate next steps.
+
+INSTRUCTIONS & CONSTRAINTS:
+1. Write a contextually accurate email response addressing the latest received email.
+2. Incorporate user directives and acknowledge task resolutions if specified.
+3. Apply requested tone directive specified in the request. Output ONLY plain text response (greeting, body, sign-off).
+4. Do NOT include robotic meta-commentary, subject headers, or intro lines like "Here is your draft:".
+5. Use clean placeholders like [Insert Time] or [Insert Link] for minor missing variables.
+""".strip()
+
+
 class ThreadLLMService:
     """Dedicated service for LLM prompt construction, structured output, and schema validation."""
 
@@ -46,13 +81,7 @@ class ThreadLLMService:
         """Constructs a consolidated prompt for Gemini to analyze the thread's initial tasks and metadata."""
         auto_draft_instruction = ""
         if enable_auto_draft:
-            auto_draft_instruction = """
-4. Auto-Draft Generation:
-   - Evaluate if the email conversation permits drafting an automated response.
-   - If missing private/unknown user decisions or policies, set `auto_draft.can_generate = False` and provide a brief `reason`.
-   - If sufficient context exists, set `auto_draft.can_generate = True`, provide `recipient_to`, `subject` (e.g. 'Re: ...'), and draft `body`.
-   - Use clear placeholders like [Insert Meeting Time] for minor missing variables.
-"""
+            auto_draft_instruction = "\nNote: Auto-Draft generation is requested for this external actionable thread.\n"
 
         summary_style_text = "2-4 concise executive paragraph sentences"
         if summary_format == "bullets":
@@ -61,21 +90,15 @@ class ThreadLLMService:
             summary_style_text = "1-2 sharp, highly concise summary sentences"
 
         return f"""
-You are an advanced email operations manager.
 Subject: {thread_subject}
 Anchor Date: {anchor_date}
+Requested Summary Format: {summary_style_text}
 
 Pre-extracted action items (tasks, commitments, questions):
 {json.dumps(actions_payload, indent=2)}
 
-Instructions:
-1. Determine `has_actionable_tasks`. Set to True if there is at least one new, concrete task that demands human action. Set to False for generic system updates, newsletters, subscription notices, automated server stats, status alerts, or closures. Only focus on critical updates that demand task actions (e.g., Jira tickets, server down alerts, "action required" billing updates).
-2. If `has_actionable_tasks` is False:
-   - Set `task_generations` to an empty list.
-   - Leave `thread_summary`, `thread_priority`, and `auto_draft` as null (do not generate them).
-3. If `has_actionable_tasks` is True:
-   - Evaluate the action items. Set `is_actionable_task` to True only if it requires user action. Generate the actionable `title`, `intent_label`, `priority`, and `due_date_iso` (relative to anchor date).
-   - Generate `thread_summary` ({summary_style_text}) and `thread_priority` ('High', 'Medium', 'Low').
+Email Manifest:
+{json.dumps(email_manifest, indent=2)}
 {auto_draft_instruction}
 """
 
@@ -92,15 +115,9 @@ Instructions:
         """Constructs a delta prompt for Gemini when a new email arrives on an existing thread."""
         auto_draft_instruction = ""
         if enable_auto_draft:
-            auto_draft_instruction = """
-4. Auto-Draft Generation:
-   - Evaluate if the email conversation permits drafting an automated response.
-   - If missing private/unknown user decisions or policies, set `auto_draft.can_generate = False` and provide a brief `reason`.
-   - If sufficient context exists, set `auto_draft.can_generate = True`, provide `recipient_to`, `subject`, and draft `body`.
-   - Use clear placeholders like [Insert Meeting Time] for minor missing variables.
-"""
+            auto_draft_instruction = "\nNote: Auto-Draft generation is requested for this external actionable thread.\n"
+
         return f"""
-You are an advanced email operations manager.
 Subject: {thread_subject}
 Anchor Date: {anchor_date}
 
@@ -113,15 +130,8 @@ Currently Active Pending Tasks:
 New Incoming Email Snippet:
 {new_email_snippet}
 
-Pre-extracted action items from incoming email (tasks, commitments, questions):
+Pre-extracted action items from incoming email:
 {json.dumps(new_actions_payload, indent=2)}
-
-Instructions:
-1. Analyze the new incoming email and action items in relation to the prior thread summary and pending tasks.
-2. Determine `has_actionable_tasks`.
-3. If `has_actionable_tasks` is True:
-   - Extract ONLY new, concrete actionable tasks created by this incoming email in `task_generations`.
-   - Generate an updated, merged `thread_summary` (4-6 concise sentences incorporating the new development) and updated `thread_priority`.
 {auto_draft_instruction}
 """
 
@@ -147,7 +157,8 @@ Instructions:
         return self.llm.generate_structured_json(
             prompt=prompt,
             response_schema=UnifiedThreadOrchestrationResponse,
-            model=model
+            model=model,
+            system_instruction=THREAD_ORCHESTRATION_SYSTEM_INSTRUCTION
         )
 
     def orchestrate_thread_update_via_llm(
@@ -175,7 +186,8 @@ Instructions:
         return self.llm.generate_structured_json(
             prompt=prompt,
             response_schema=UnifiedThreadOrchestrationResponse,
-            model=model
+            model=model,
+            system_instruction=THREAD_ORCHESTRATION_SYSTEM_INSTRUCTION
         )
 
     def build_manual_draft_prompt(
@@ -215,8 +227,6 @@ Instructions:
         summary_block = f"\nPrior Thread Summary:\n{existing_summary}\n" if existing_summary else ""
 
         return f"""
-You are an executive email communication assistant drafting a direct reply on behalf of the user.
-
 Thread Subject: {thread_subject}
 {summary_block}{facts_section}
 Latest Received Email (Message you are replying to):
@@ -226,13 +236,7 @@ Tasks Selected for Resolution via this Reply:
 {tasks_block}
 
 User Directives: {instructions_text}
-Tone Directive: {selected_tone_rule}
-
-Instructions & Constraints:
-1. Write a contextually accurate email response addressing the latest received email.
-2. Incorporate user directives and acknowledge task resolutions if specified.
-3. Apply requested tone ({tone}). Output ONLY plain text response (greeting, body, sign-off).
-4. Use clean placeholders like [Insert Time] or [Insert Link] for minor missing variables.
+Tone Directive Requested: {selected_tone_rule} ({tone})
 """
 
     def generate_manual_draft(
@@ -255,6 +259,9 @@ Instructions & Constraints:
             ai_instructions=ai_instructions,
             tone=tone
         )
-        raw_text = self.llm.generate_text(prompt=prompt)
+        raw_text = self.llm.generate_text(
+            prompt=prompt,
+            system_instruction=MANUAL_DRAFT_SYSTEM_INSTRUCTION
+        )
         return raw_text.strip() if raw_text else ""
 

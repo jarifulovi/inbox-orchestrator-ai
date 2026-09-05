@@ -23,18 +23,25 @@ class LLMClient:
         # print("Available models:", [model.name for model in self.client.models.list()])
 
 
-    def generate_structured_json(self, prompt: str, response_schema: Type[T], model: str | None = None) -> T:
+    def generate_structured_json(
+        self, 
+        prompt: str, 
+        response_schema: Type[T], 
+        model: str | None = None,
+        system_instruction: str | None = None
+    ) -> T:
         """
         Sends a prompt to Gemini and enforces strict Pydantic structured output mapping.
-        Automatically records the input prompt and output response to local context storage.
+        Supports native Gemini system_instruction for server-side context caching.
         """
         target_model = model or self.default_model
 
-        # Leverage the native google-genai SDK structured output options
+        # Leverage native google-genai SDK options including system_instruction
         config = types.GenerateContentConfig(
             response_mime_type="application/json",
             response_schema=response_schema,
             temperature=0.1,  # Keep it highly deterministic for structured data extraction
+            system_instruction=system_instruction,
         )
 
         try:
@@ -53,21 +60,29 @@ class LLMClient:
             else:
                 result = response_schema.model_validate_json(response.text)
 
-            # Record LLM context asynchronously/safely without blocking execution
-            self.recorder.record_context(prompt=prompt, response_data=result, model=target_model)
+            # Record LLM context with system_instruction metadata
+            metadata = {"system_instruction": system_instruction} if system_instruction else {}
+            self.recorder.record_context(prompt=prompt, response_data=result, model=target_model, metadata=metadata)
             return result
 
         except Exception as e:
             raise RuntimeWarning(f"LLM Structure Extraction Failed: {str(e)}")
 
-    def generate_text(self, prompt: str, model: str | None = None, temperature: float = 0.7) -> str:
+    def generate_text(
+        self, 
+        prompt: str, 
+        model: str | None = None, 
+        temperature: float = 0.7,
+        system_instruction: str | None = None
+    ) -> str:
         """
         Sends a prompt to Gemini and returns raw string response text.
-        Automatically records input prompt and output response to local context storage.
+        Supports native Gemini system_instruction for server-side context caching.
         """
         target_model = model or self.default_model
         config = types.GenerateContentConfig(
             temperature=temperature,
+            system_instruction=system_instruction,
         )
         try:
             response = self.client.models.generate_content(
@@ -76,7 +91,8 @@ class LLMClient:
                 config=config
             )
             result_text = response.text or ""
-            self.recorder.record_context(prompt=prompt, response_data=result_text, model=target_model)
+            metadata = {"system_instruction": system_instruction} if system_instruction else {}
+            self.recorder.record_context(prompt=prompt, response_data=result_text, model=target_model, metadata=metadata)
             return result_text
         except Exception as e:
             raise RuntimeError(f"LLM Text Generation Failed: {str(e)}")

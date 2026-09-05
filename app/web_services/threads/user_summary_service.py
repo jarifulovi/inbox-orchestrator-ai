@@ -6,6 +6,16 @@ from app.schemas.thread_schemas import UserThreadSummaryOutput
 from app.core.services.utils.llm_content_compressor import LLMContentCompressorService
 
 
+USER_SUMMARY_SYSTEM_INSTRUCTION = """
+You are an expert executive email assistant synthesizing email threads into clean, high-level summaries.
+
+INSTRUCTIONS:
+1. Synthesize the conversation thread into a clean `summary` adhering to the requested size boundary. Focus on key topics, decisions, and remaining actions.
+2. Determine `priority`: 'high', 'medium', or 'low' based on urgency and importance.
+3. Provide `key_takeaways`: exactly 2 to 3 concise bullet point key takeaways.
+""".strip()
+
+
 class UserThreadSummaryService:
     """
     Service for user-initiated manual thread summary generation.
@@ -106,24 +116,17 @@ class UserThreadSummaryService:
 
         # Construct Final Prompt
         return f"""
-You are an expert executive email assistant synthesizing an email thread into a clear summary.
-
 Thread Subject: {thread_subject}
 {summary_refinement}
 Active Pending Tasks:
 {tasks_str}
+Requested Summary Format: {summary_style_text}
 
 ### SECTION 1: RECENT MESSAGES
 {recent_context_str}
 
 ### SECTION 2: HISTORICAL CONVERSATION BACKGROUND
 {historical_context_str}
-
-### INSTRUCTIONS FOR SUMMARY GENERATION:
-1. Synthesize the entire conversation thread into a clean `summary`.
-2. **STRICT SIZE BOUNDARY**: The `summary` MUST be {summary_style_text}. Focus on key topics discussed, current decisions/status, and what action remains. Avoid long text walls.
-3. Determine `priority`: 'high', 'medium', or 'low' based on urgency and importance.
-4. Provide `key_takeaways`: exactly 2 to 3 concise bullet point key takeaways.
 """
 
     def generate_summary_via_llm(
@@ -160,7 +163,8 @@ Active Pending Tasks:
             output = self.llm.generate_structured_json(
                 prompt=prompt,
                 response_schema=UserThreadSummaryOutput,
-                model=model
+                model=model,
+                system_instruction=USER_SUMMARY_SYSTEM_INSTRUCTION
             )
             return output
         except Exception as e:
