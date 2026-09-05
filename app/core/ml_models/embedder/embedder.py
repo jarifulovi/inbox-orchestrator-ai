@@ -23,6 +23,10 @@ class EmailEmbedder:
             with cls._instance_lock:
                 if cls._model is None or cls._loaded_model_name != model_name:
                     print(f"[EmailEmbedder] Lazy-loading shared local embedding model: {model_name}")
+                    try:
+                        torch.set_num_threads(2)
+                    except Exception:
+                        pass
                     cls._tokenizer = AutoTokenizer.from_pretrained(model_name)
                     cls._model = AutoModel.from_pretrained(model_name)
                     cls._model.eval()

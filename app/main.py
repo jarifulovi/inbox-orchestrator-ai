@@ -1,6 +1,6 @@
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from app.core.db.supabase import is_supabase_connected
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.app_exceptions import register_exception_handlers
@@ -27,6 +27,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
 app.include_router(auth_router, tags=["auth"])
 # Mount specific domain sub-routers BEFORE wildcard email_router to avoid route shadowing
 app.include_router(thread_router)
