@@ -458,9 +458,17 @@ class ThreadWebService:
         await worker._process_account(account, skip_ml=True)
         return True
 
-    async def generate_user_thread_summary(self, thread_id: str, account_id: str, auth_user: Optional[dict] = None) -> dict:
+    async def generate_user_thread_summary(
+        self, 
+        thread_id: str, 
+        account_id: str, 
+        auth_user: Optional[dict] = None,
+        force_refresh: bool = False,
+        cooldown_seconds: int = 300
+    ) -> dict:
         """
         Executes user-initiated thread summary generation using UserThreadSummaryService.
+        Enforces a 5-minute cooldown period unless force_refresh=True.
         Persists updated summary, priority, summary_generated_at, and context_memory to DB.
         """
         from app.web_services.threads.user_summary_service import UserThreadSummaryService
@@ -479,6 +487,31 @@ class ThreadWebService:
             raise KeyError(f"Thread {thread_id} not found or access denied.")
 
         thread = thread_res.data
+
+        # 1b. Cooldown Guard: Return cached summary if generated recently (<5 min) and not force_refresh
+        existing_summary = thread.get("summary")
+        summary_generated_at_str = thread.get("summary_generated_at")
+
+        if existing_summary and not force_refresh:
+            is_fresh = False
+            if summary_generated_at_str:
+                try:
+                    summary_time = datetime.fromisoformat(summary_generated_at_str.replace("Z", "+00:00"))
+                    elapsed_seconds = (datetime.now(timezone.utc) - summary_time).total_seconds()
+                    if elapsed_seconds < cooldown_seconds:
+                        is_fresh = True
+                except Exception:
+                    is_fresh = True
+            else:
+                is_fresh = True
+
+            if is_fresh:
+                print(f"⚡ [ThreadService] Returning fresh cached summary for thread {thread_id} (Skipping LLM call).")
+                return {
+                    "summary": existing_summary,
+                    "priority": thread.get("priority") or "medium",
+                    "key_takeaways": ["Serving fresh cached thread summary."]
+                }
 
         # 2. Fetch all emails associated with thread (ordered by received_at DESC, newest first)
         emails_res = self.db.table("emails") \

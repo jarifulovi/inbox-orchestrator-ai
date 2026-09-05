@@ -109,11 +109,7 @@ class UnifiedThreadOrchestrationResponse(BaseModel):
         None,
         description="Overall thread priority ('High', 'Medium', 'Low'). Set to null if has_actionable_tasks is False."
     )
-    does_need_auto_draft: Optional[bool] = Field(
-        None,
-        description="True if the thread requires an AI-generated draft response for the user. Set to null if has_actionable_tasks is False."
-    )
     auto_draft: Optional[AutoDraftBlueprint] = Field(
         None,
-        description="Automated proposed draft response payload. Populated ONLY when enable_auto_draft is True and has_actionable_tasks is True."
+        description="Automated proposed draft response payload."
     )

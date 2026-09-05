@@ -100,11 +100,12 @@ transformers_cache/
 .dvc/
 *.dvc
 
-# Data files
+# Data files and directories
 *.csv
 *.tsv
 *.log
 *.jsonl
+logs/
 
 # OS files
 .DS_Store

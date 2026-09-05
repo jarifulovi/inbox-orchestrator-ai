@@ -4,6 +4,8 @@ from pydantic import BaseModel
 from google import genai
 from google.genai import types
 
+from app.core.services.utils.llm_context_recorder import LLMContextRecorder
+
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -17,12 +19,14 @@ class LLMClient:
         # Initialize sync client (use context managers where possible)
         self.client = genai.Client()
         self.default_model = "gemini-3.6-flash"
+        self.recorder = LLMContextRecorder()
         # print("Available models:", [model.name for model in self.client.models.list()])
 
 
     def generate_structured_json(self, prompt: str, response_schema: Type[T], model: str | None = None) -> T:
         """
         Sends a prompt to Gemini and enforces strict Pydantic structured output mapping.
+        Automatically records the input prompt and output response to local context storage.
         """
         target_model = model or self.default_model
 
@@ -40,15 +44,18 @@ class LLMClient:
                 config=config
             )
 
+            result = None
             # The SDK handles Pydantic validation implicitly via response.parsed
             if response.parsed:
-                return cast(T, response.parsed)
-            # Check for text availability and raise a clear runtime error if it's missing
-            if not response.text:
+                result = cast(T, response.parsed)
+            elif not response.text:
                 raise ValueError("LLM Error: Received an empty text response from the API.")
+            else:
+                result = response_schema.model_validate_json(response.text)
 
-            # Fallback if parsing didn't populate .parsed automatically
-            return response_schema.model_validate_json(response.text)
+            # Record LLM context asynchronously/safely without blocking execution
+            self.recorder.record_context(prompt=prompt, response_data=result, model=target_model)
+            return result
 
         except Exception as e:
             raise RuntimeWarning(f"LLM Structure Extraction Failed: {str(e)}")
@@ -56,6 +63,7 @@ class LLMClient:
     def generate_text(self, prompt: str, model: str | None = None, temperature: float = 0.7) -> str:
         """
         Sends a prompt to Gemini and returns raw string response text.
+        Automatically records input prompt and output response to local context storage.
         """
         target_model = model or self.default_model
         config = types.GenerateContentConfig(
@@ -67,7 +75,9 @@ class LLMClient:
                 contents=prompt,
                 config=config
             )
-            return response.text or ""
+            result_text = response.text or ""
+            self.recorder.record_context(prompt=prompt, response_data=result_text, model=target_model)
+            return result_text
         except Exception as e:
             raise RuntimeError(f"LLM Text Generation Failed: {str(e)}")
 

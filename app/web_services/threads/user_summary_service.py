@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 from app.core.llm.client import LLMClient
 from app.schemas.thread_schemas import UserThreadSummaryOutput
-from app.core.services.content_compressor import ContentCompressorService
+from app.core.services.utils.llm_content_compressor import LLMContentCompressorService
 
 
 class UserThreadSummaryService:
@@ -48,7 +48,7 @@ class UserThreadSummaryService:
         recent_formatted = []
         for idx, e in enumerate(reversed(recent_emails), start=1):
             sender_info = f"{e.get('sender_name') or ''} <{e.get('sender') or ''}>".strip()
-            body_clean = ContentCompressorService.compress_email_body(e.get("body") or "")
+            body_clean = LLMContentCompressorService.compress_email_body(e.get("body") or "")
             recent_formatted.append(
                 f"--- [Recent Message #{idx}] ---\n"
                 f"From: {sender_info}\n"
@@ -113,19 +113,13 @@ Thread Subject: {thread_subject}
 Active Pending Tasks:
 {tasks_str}
 
-================================================================================
-SECTION 1: RECENT MESSAGES (FULL CONTENT)
-================================================================================
+### SECTION 1: RECENT MESSAGES
 {recent_context_str}
 
-================================================================================
-SECTION 2: HISTORICAL CONVERSATION BACKGROUND (FACTS & CAPPED SNIPPETS)
-================================================================================
+### SECTION 2: HISTORICAL CONVERSATION BACKGROUND
 {historical_context_str}
 
-================================================================================
-INSTRUCTIONS FOR SUMMARY GENERATION:
-================================================================================
+### INSTRUCTIONS FOR SUMMARY GENERATION:
 1. Synthesize the entire conversation thread into a clean `summary`.
 2. **STRICT SIZE BOUNDARY**: The `summary` MUST be {summary_style_text}. Focus on key topics discussed, current decisions/status, and what action remains. Avoid long text walls.
 3. Determine `priority`: 'high', 'medium', or 'low' based on urgency and importance.

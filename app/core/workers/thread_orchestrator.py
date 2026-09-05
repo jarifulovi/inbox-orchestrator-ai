@@ -86,7 +86,7 @@ class ThreadOrchestrator:
             return
 
         facts = self._fetch_thread_facts([e["id"] for e in emails])
-        thread_tasks = self._fetch_thread_tasks(thread_id)
+        thread_tasks = self._fetch_pending_tasks(thread_id)
 
         # 3. Domain Partitioning via ThreadCoreService
         pending_tasks, facts_to_process = self.orchestration_service.partition_unprocessed_facts(
@@ -121,10 +121,21 @@ class ThreadOrchestrator:
             res = self.db.auth.admin.get_user_by_id(user_id)
             if res and hasattr(res, "user") and res.user:
                 meta = res.user.user_metadata or {}
-                return meta.get("settings") or {}
+                settings = meta.get("settings") or {}
+                return {
+                    "enable_auto_task": settings.get("enable_auto_task", True),
+                    "enable_auto_draft": settings.get("enable_auto_draft", False),
+                    "summary_format": settings.get("summary_format", "paragraph"),
+                    "ai_model": settings.get("ai_model", "gemini-3.6-flash"),
+                }
         except Exception as e:
             print(f"[ThreadOrchestrator] Failed to fetch user_settings for {user_id}: {e}")
-        return {}
+        return {
+            "enable_auto_task": True,
+            "enable_auto_draft": False,
+            "summary_format": "paragraph",
+            "ai_model": "gemini-3.6-flash",
+        }
 
     def _fetch_account_metadata(self, account_id: str) -> dict | None:
         res = self.db.table("connected_accounts") \
@@ -148,21 +159,27 @@ class ThreadOrchestrator:
         res = self.db.table("email_facts") \
             .select("*") \
             .in_("email_id", email_ids) \
-            .in_("fact_type", ELIGIBLE_TASK_FACT_TYPES) \
             .execute()
         return res.data or []
 
-    def _fetch_thread_tasks(self, thread_id: str) -> list:
+    def _fetch_pending_tasks(self, thread_id: str) -> list:
         res = self.db.table("tasks") \
-            .select("*") \
+            .select("id, title") \
             .eq("thread_id", thread_id) \
+            .eq("status", "pending") \
             .execute()
         return res.data or []
+
+    def _mark_thread_processed(self, thread_id: str):
+        self.db.table("email_threads").update({
+            "is_processed": True,
+            "summary_generated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", thread_id).execute()
 
     def _save_thread_state(self, thread_id: str, workflow_status: str, priority: str, summary: str, context_memory: dict):
         self.db.table("email_threads").update({
             "workflow_status": workflow_status,
-            "priority": priority.lower(),
+            "priority": priority,
             "summary": summary,
             "context_memory": context_memory,
             "is_processed": True,
@@ -172,7 +189,7 @@ class ThreadOrchestrator:
     def _handle_llm_bypass(self, thread: dict, emails: list, user_email: str, pending_tasks: list):
         thread_id = thread["id"]
         print(f"⚡ [ThreadOrchestrator] Bypassing LLM for thread {thread_id} (No new action items).")
-        summary, priority, _ = self.orchestration_service.generate_rule_based_fallback(thread, emails)
+        summary, priority = self.orchestration_service.generate_rule_based_fallback(thread, emails)
         workflow_status = self.orchestration_service.derive_workflow_status(
             thread=thread,
             emails=emails,
@@ -218,10 +235,10 @@ class ThreadOrchestrator:
         user_allows_auto_draft = user_settings.get("enable_auto_draft", False)
         enable_auto_task = user_settings.get("enable_auto_task", True)
         summary_format = user_settings.get("summary_format", "paragraph")
-        ai_model = user_settings.get("ai_model", "gemini-3.5-flash")
+        ai_model = user_settings.get("ai_model", "gemini-3.6-flash")
 
         # Enable auto-draft prompt toggle if user settings allow it, incoming external email on actionable thread without active draft
-        enable_auto_draft = user_allows_auto_draft and is_external_sender and no_active_draft
+        enable_auto_draft = bool(user_allows_auto_draft and is_external_sender and no_active_draft)
 
         if existing_summary and len(emails) > 1:
             pending_tasks_payload = [{"id": t["id"], "title": t["title"]} for t in pending_tasks]
@@ -251,7 +268,7 @@ class ThreadOrchestrator:
             )
 
         if not response.has_actionable_tasks:
-            summary, _, _ = self.orchestration_service.generate_rule_based_fallback(thread, emails)
+            summary, _ = self.orchestration_service.generate_rule_based_fallback(thread, emails)
             thread_priority = "low"
             thread_summary = response.thread_summary or existing_summary or summary
             new_tasks = []
@@ -285,8 +302,8 @@ class ThreadOrchestrator:
             thread_priority = response.thread_priority or "medium"
             thread_summary = response.thread_summary or (thread.get("summary") or "No Summary")
 
-            # Handle Auto-Draft persistence if generated
-            if response.auto_draft and response.auto_draft.can_generate:
+            # Handle Auto-Draft persistence if enabled and generated
+            if enable_auto_draft and response.auto_draft and response.auto_draft.can_generate:
                 print(f"✨ [ThreadOrchestrator] Auto-draft generated for thread {thread_id}. Persisting pending_approval draft...")
                 try:
                     from app.core.services.drafts.draft_core_service import CoreDraftService

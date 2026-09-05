@@ -78,13 +78,19 @@ from app.api.deps.auth import get_current_user
 @router.post("/threads/{thread_id}/summary")
 async def generate_thread_summary(
         thread_id: str,
+        force_refresh: bool = Query(False),
         account_id: str = Depends(get_verified_account_id),
         auth_user: dict = Depends(get_current_user),
         db=Depends(get_supabase_client)
 ):
     service = ThreadWebService(db)
     try:
-        result = await service.generate_user_thread_summary(thread_id, account_id, auth_user=auth_user)
+        result = await service.generate_user_thread_summary(
+            thread_id, 
+            account_id, 
+            auth_user=auth_user,
+            force_refresh=force_refresh
+        )
         return {"status": "success", "data": result}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

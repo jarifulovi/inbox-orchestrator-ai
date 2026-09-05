@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Tuple, Optional
 from app.core.llm.client import LLMClient
 from app.core.schemas.tasks import UnifiedThreadOrchestrationResponse
-from app.core.services.content_compressor import ContentCompressorService
+from app.core.services.utils.llm_content_compressor import LLMContentCompressorService
 from app.core.services.threads.thread_llm_service import ThreadLLMService
 from app.core.services.threads.thread_rule_service import ThreadRuleService
 
@@ -114,7 +114,7 @@ class ThreadCoreService:
                 "sender": e["sender"],
                 "sender_name": e["sender_name"],
                 "received_at": e["received_at"],
-                "body_compressed": ContentCompressorService.compress_email_body(e["body"])
+                "body_compressed": LLMContentCompressorService.compress_email_body(e["body"])
             }
             for e in emails
         ]

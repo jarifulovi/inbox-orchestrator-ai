@@ -46,7 +46,7 @@ class ThreadLLMService:
         auto_draft_instruction = ""
         if enable_auto_draft:
             auto_draft_instruction = """
-4. Auto-Draft Generation (because enable_auto_draft is True):
+4. Auto-Draft Generation:
    - Evaluate if the email conversation permits drafting an automated response.
    - If missing private/unknown user decisions or policies, set `auto_draft.can_generate = False` and provide a brief `reason`.
    - If sufficient context exists, set `auto_draft.can_generate = True`, provide `recipient_to`, `subject` (e.g. 'Re: ...'), and draft `body`.
@@ -71,10 +71,10 @@ Instructions:
 1. Determine `has_actionable_tasks`. Set to True if there is at least one new, concrete task that demands human action. Set to False for generic system updates, newsletters, subscription notices, automated server stats, status alerts, or closures. Only focus on critical updates that demand task actions (e.g., Jira tickets, server down alerts, "action required" billing updates).
 2. If `has_actionable_tasks` is False:
    - Set `task_generations` to an empty list.
-   - Leave `thread_summary`, `thread_priority`, `does_need_auto_draft`, and `auto_draft` as null (do not generate them).
+   - Leave `thread_summary`, `thread_priority`, and `auto_draft` as null (do not generate them).
 3. If `has_actionable_tasks` is True:
    - Evaluate the action items. Set `is_actionable_task` to True only if it requires user action. Generate the actionable `title`, `intent_label`, `priority`, and `due_date_iso` (relative to anchor date).
-   - Generate `thread_summary` ({summary_style_text}), `thread_priority` ('High', 'Medium', 'Low'), and `does_need_auto_draft` (True/False).
+   - Generate `thread_summary` ({summary_style_text}) and `thread_priority` ('High', 'Medium', 'Low').
 {auto_draft_instruction}
 """
 
@@ -92,7 +92,7 @@ Instructions:
         auto_draft_instruction = ""
         if enable_auto_draft:
             auto_draft_instruction = """
-4. Auto-Draft Generation (because enable_auto_draft is True):
+4. Auto-Draft Generation:
    - Evaluate if the email conversation permits drafting an automated response.
    - If missing private/unknown user decisions or policies, set `auto_draft.can_generate = False` and provide a brief `reason`.
    - If sufficient context exists, set `auto_draft.can_generate = True`, provide `recipient_to`, `subject`, and draft `body`.
@@ -120,7 +120,7 @@ Instructions:
 2. Determine `has_actionable_tasks`.
 3. If `has_actionable_tasks` is True:
    - Extract ONLY new, concrete actionable tasks created by this incoming email in `task_generations`.
-   - Generate an updated, merged `thread_summary` (4-6 concise sentences incorporating the new development), updated `thread_priority`, and `does_need_auto_draft`.
+   - Generate an updated, merged `thread_summary` (4-6 concise sentences incorporating the new development) and updated `thread_priority`.
 {auto_draft_instruction}
 """
 
