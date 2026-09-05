@@ -2,6 +2,7 @@ import json
 from typing import List, Dict, Any, Optional
 from app.core.llm.client import LLMClient
 from app.core.schemas.tasks import UnifiedThreadOrchestrationResponse
+from app.core.services.utils.llm_content_compressor import LLMContentCompressorService
 
 """
 ================================================================================
@@ -188,7 +189,17 @@ Instructions:
         tone: str = "Professional"
     ) -> str:
         """Constructs an engineered prompt for user-triggered (manual) AI draft reply generation."""
-        facts_block = json.dumps(email_facts, indent=2) if email_facts else "None"
+        # Compress latest email text to strip HTML bloat, signatures, carriage returns, and tracking URLs
+        compressed_latest_email = LLMContentCompressorService.compress_email_body(latest_email_snippet or "")
+
+        # Smart Facts Inclusion: If existing_summary is present, it encapsulates historical context so omit email_facts.
+        # If existing_summary is missing, cap historical email_facts at max 5 total.
+        facts_section = ""
+        if not existing_summary and email_facts:
+            capped_facts = email_facts[:5]
+            facts_block = json.dumps(capped_facts, indent=2)
+            facts_section = f"\nPre-extracted Action Items / Historical Facts:\n{facts_block}\n"
+
         tasks_block = json.dumps(resolved_tasks, indent=2) if resolved_tasks else "None"
         clean_instr = (ai_instructions or "").strip()
         instructions_text = clean_instr if clean_instr else "Respond appropriately to the incoming email."
@@ -201,35 +212,27 @@ Instructions:
         }
         selected_tone_rule = tone_rules.get(tone, tone_rules["Professional"])
 
+        summary_block = f"\nPrior Thread Summary:\n{existing_summary}\n" if existing_summary else ""
+
         return f"""
 You are an executive email communication assistant drafting a direct reply on behalf of the user.
 
 Thread Subject: {thread_subject}
-
-Prior Thread Summary:
-{existing_summary or "Initial conversation thread."}
-
-Pre-extracted Action Items / Facts:
-{facts_block}
-
+{summary_block}{facts_section}
 Latest Received Email (Message you are replying to):
-{latest_email_snippet or "No recent text."}
+{compressed_latest_email or "No recent text."}
 
 Tasks Selected for Resolution via this Reply:
 {tasks_block}
 
-User's Specific Directives / Instructions:
-{instructions_text}
-
+User Directives: {instructions_text}
 Tone Directive: {selected_tone_rule}
 
 Instructions & Constraints:
-1. Write a contextually accurate, high-quality email response addressing the latest received email.
-2. Incorporate the user's specific directives and acknowledge the task resolutions if tasks are specified.
-3. Apply the requested tone ({tone}).
-4. Output ONLY the plain text email response content (greeting, body paragraphs, and sign-off).
-5. Do NOT include robotic meta-commentary, subject headers, or intro lines like "Here is your draft:".
-6. If critical specific details requested by the user are missing, use clean placeholders like [Insert Time] or [Insert Link].
+1. Write a contextually accurate email response addressing the latest received email.
+2. Incorporate user directives and acknowledge task resolutions if specified.
+3. Apply requested tone ({tone}). Output ONLY plain text response (greeting, body, sign-off).
+4. Use clean placeholders like [Insert Time] or [Insert Link] for minor missing variables.
 """
 
     def generate_manual_draft(
