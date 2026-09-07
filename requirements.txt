@@ -1,6 +1,5 @@
 fastapi
 uvicorn
-gunicorn
 google-genai
 transformers
 torch
@@ -16,4 +15,4 @@ httpx
 google-auth-oauthlib
 html2text
 email-reply-parser
-onnxruntime
+beautifulsoup4
