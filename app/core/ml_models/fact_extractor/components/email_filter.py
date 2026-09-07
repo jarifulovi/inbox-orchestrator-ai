@@ -8,7 +8,7 @@ class EmailFilter:
         "work_professional": ["task", "commitment", "decision", "question", "fact"],  # Full extraction allowed
         "financial": ["task", "commitment", "decision", "question", "fact"],  # Full extraction allowed
         "system_automated": ["task", "decision", "question"],  # Only actionable tasks, decisions, questions
-        "others": ["question", "decision"],  # Selective approach: ignore casual/noise tasks and commitments
+        "others": [],  # Block-all approach: completely bypasses extraction for general noise/promotions
     }
 
     @classmethod

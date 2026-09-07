@@ -38,7 +38,7 @@ INSTRUCTIONS:
    - Leave `thread_summary`, `thread_priority`, and `auto_draft` as null.
 3. If `has_actionable_tasks` is True:
    - Evaluate action items. Set `is_actionable_task` to True only if it requires user action. Generate actionable `title`, `intent_label`, `priority`, and `due_date_iso` (relative to anchor date).
-   - Generate `thread_summary` and `thread_priority` ('High', 'Medium', 'Low').
+   - Generate `thread_summary` adhering to the requested summary format in the prompt (if bullet points are requested, format as separate lines starting with `- ` separated by `\n` newlines without inline `•` dots; if paragraph, write clean prose), and `thread_priority` ('High', 'Medium', 'Low').
 4. Auto-Draft Generation (when enabled):
    - Evaluate if the email conversation permits drafting an automated response.
    - If missing private/unknown user decisions, set `auto_draft.can_generate = False` and provide a brief `reason`.
@@ -154,12 +154,18 @@ Pre-extracted action items from incoming email:
             enable_auto_draft=enable_auto_draft,
             summary_format=summary_format
         )
-        return self.llm.generate_structured_json(
+        res = self.llm.generate_structured_json(
             prompt=prompt,
             response_schema=UnifiedThreadOrchestrationResponse,
             model=model,
             system_instruction=THREAD_ORCHESTRATION_SYSTEM_INSTRUCTION
         )
+        if res and hasattr(res, "thread_summary") and isinstance(res.thread_summary, str):
+            summary_text = res.thread_summary
+            if '•' in summary_text and '\n' not in summary_text:
+                bullets = [b.strip() for b in summary_text.split('•') if b.strip()]
+                res.thread_summary = "\n".join(f"- {b}" for b in bullets)
+        return res
 
     def orchestrate_thread_update_via_llm(
         self,

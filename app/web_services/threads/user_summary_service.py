@@ -10,10 +10,12 @@ USER_SUMMARY_SYSTEM_INSTRUCTION = """
 You are an expert executive email assistant synthesizing email threads into clean, high-level summaries.
 
 INSTRUCTIONS:
-1. Synthesize the conversation thread into a clean `summary` adhering to the requested size boundary. Focus on key topics, decisions, and remaining actions.
-2. Determine `priority`: 'high', 'medium', or 'low' based on urgency and importance.
-3. Provide `key_takeaways`: exactly 2 to 3 concise bullet point key takeaways.
+1. Synthesize the conversation thread into a clean `summary` adhering to the requested format and size boundary specified in the prompt. Focus on key topics, decisions, and remaining actions.
+2. If bullet point format is requested, format `summary` strictly as separate lines starting with `- ` (dash space) separated by `\n` newlines (do NOT put inline bullet dots `•` on a single line). If paragraph format is requested, write clean prose sentences.
+3. Determine `priority`: 'high', 'medium', or 'low' based on urgency and importance.
+4. Provide `key_takeaways`: exactly 2 to 3 concise bullet point key takeaways.
 """.strip()
+
 
 
 class UserThreadSummaryService:
@@ -166,6 +168,12 @@ Requested Summary Format: {summary_style_text}
                 model=model,
                 system_instruction=USER_SUMMARY_SYSTEM_INSTRUCTION
             )
+            # Post-processing sanitizer: Ensure inline bullet dots are normalized to newline dashes
+            if output and hasattr(output, "summary") and isinstance(output.summary, str):
+                summary_text = output.summary
+                if '•' in summary_text and '\n' not in summary_text:
+                    bullets = [b.strip() for b in summary_text.split('•') if b.strip()]
+                    output.summary = "\n".join(f"- {b}" for b in bullets)
             return output
         except Exception as e:
             print(f"[UserThreadSummaryService ERROR] LLM summary generation failed: {e}. Utilizing fallback.")
