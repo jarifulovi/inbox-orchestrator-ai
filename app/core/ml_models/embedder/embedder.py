@@ -31,8 +31,13 @@ class EmailEmbedder:
                     except Exception:
                         pass
 
-                    cls._tokenizer = AutoTokenizer.from_pretrained(model_name)
-                    cls._model = AutoModel.from_pretrained(model_name)
+                    try:
+                        cls._tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+                        cls._model = AutoModel.from_pretrained(model_name, local_files_only=True)
+                    except Exception:
+                        cls._tokenizer = AutoTokenizer.from_pretrained(model_name)
+                        cls._model = AutoModel.from_pretrained(model_name)
+
                     cls._model.eval()
                     cls._loaded_model_name = model_name
                     force_garbage_collection()

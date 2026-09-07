@@ -59,7 +59,7 @@ class CoreSearchService:
         except Exception:
             pass
 
-        # 2. Generate query embedding ONCE (1x ML cost)
+        # 2. Generate query embedding ONCE (local_files_only=True disk load)
         embedder = _get_embedder()
         query_embedding = embedder.generate_embeddings([query])[0]
 
