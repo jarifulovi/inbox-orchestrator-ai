@@ -3,13 +3,13 @@
 # =====================================================================
 
 services:
-  # 1. FastAPI Web Service (REST API Delivery)
+  # 1. FastAPI Web Service (REST API Delivery - Render Free Tier)
   - type: web
     name: inbox-orchestrator-backend
     env: python
     region: singapore
-    plan: starter
-    buildCommand: pip install -r requirements.txt && python3 -m spacy download en_core_web_sm && python3 -c "from transformers import AutoTokenizer, AutoModel; AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v2'); AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L6-v2')"
+    plan: free
+    buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
@@ -24,23 +24,18 @@ services:
       - key: OPENBLAS_NUM_THREADS
         value: "2"
 
-  # 2. Integrated Background Worker Daemon (Email Sync, ML Recovery & Thread Orchestration)
-  - type: worker
-    name: inbox-orchestrator-worker
-    env: python
-    region: singapore
-    plan: starter
-    buildCommand: pip install -r requirements.txt && python3 -m spacy download en_core_web_sm && python3 -c "from transformers import AutoTokenizer, AutoModel; AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v2'); AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L6-v2')"
-    startCommand: python3 -m app.worker_runner
-    envVars:
-      - key: ENVIRONMENT
-        value: production
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: OMP_NUM_THREADS
-        value: "2"
-      - key: MKL_NUM_THREADS
-        value: "2"
-      - key: OPENBLAS_NUM_THREADS
-        value: "2"
-
+  # 2. Background Worker Daemon (Disabled on Render - Runs locally via `./run.sh worker`)
+  # - type: worker
+  #   name: inbox-orchestrator-worker
+  #   env: python
+  #   region: singapore
+  #   plan: free
+  #   buildCommand: pip install -r requirements.txt && python3 -m spacy download en_core_web_sm
+  #   startCommand: python3 -m app.worker_runner
+  #   envVars:
+  #     - key: ENVIRONMENT
+  #       value: production
+  #     - key: PYTHON_VERSION
+  #       value: 3.11.0
+  #     - key: OMP_NUM_THREADS
+  #       value: "2"
