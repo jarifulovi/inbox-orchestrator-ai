@@ -16,3 +16,4 @@ httpx
 google-auth-oauthlib
 html2text
 email-reply-parser
+onnxruntime

@@ -1,6 +1,9 @@
 import threading
 import torch
 from transformers import AutoTokenizer, AutoModel
+from app.core.services.utils.memory_utils import force_garbage_collection, apply_thread_limits
+
+apply_thread_limits()
 
 
 class EmailEmbedder:
@@ -22,15 +25,17 @@ class EmailEmbedder:
         if cls._model is None or cls._loaded_model_name != model_name:
             with cls._instance_lock:
                 if cls._model is None or cls._loaded_model_name != model_name:
-                    print(f"[EmailEmbedder] Lazy-loading shared local embedding model: {model_name}")
+                    print(f"[EmailEmbedder] Lazy-loading shared local PyTorch embedding model: {model_name}")
                     try:
                         torch.set_num_threads(2)
                     except Exception:
                         pass
+
                     cls._tokenizer = AutoTokenizer.from_pretrained(model_name)
                     cls._model = AutoModel.from_pretrained(model_name)
                     cls._model.eval()
                     cls._loaded_model_name = model_name
+                    force_garbage_collection()
 
     def generate_embeddings(self, texts: list[str]) -> list[list[float]]:
         """
@@ -44,11 +49,11 @@ class EmailEmbedder:
 
         # Tokenize sentences
         encoded_input = self._tokenizer(
-            texts, 
-            padding=True, 
-            truncation=True, 
-            max_length=512, 
-            return_tensors='pt'
+            texts,
+            padding=True,
+            truncation=True,
+            max_length=512,
+            return_tensors="pt"
         )
 
         # Compute token embeddings
@@ -56,19 +61,15 @@ class EmailEmbedder:
             model_output = self._model(**encoded_input)
 
         # Perform mean pooling
-        token_embeddings = model_output[0]  # First element contains token embeddings
+        token_embeddings = model_output[0]  # Shape: (batch_size, seq_len, hidden_dim)
         attention_mask = encoded_input['attention_mask']
-        
-        # Expand attention mask to match token embeddings size
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-        
-        # Sum token embeddings weighted by attention mask
+
         sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
-        
-        # Avoid division by zero
         sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
-        
+
         embeddings = sum_embeddings / sum_mask
-        
-        # Return as list of list of floats
-        return embeddings.tolist()
+        result = embeddings.tolist()
+        force_garbage_collection()
+        return result
+

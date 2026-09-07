@@ -4,6 +4,7 @@ from app.core.services.ml.ml_pre_security_service import MLPreSecurityService
 from app.core.services.ml.ml_classifier_service import MLClassifierService
 from app.core.services.ml.ml_fact_service import MLFactService
 from app.core.services.ml.ml_post_security_service import MLPostSecurityService
+from app.core.services.utils.memory_utils import force_garbage_collection
 
 
 class MLCoreService:
@@ -116,3 +117,4 @@ class MLCoreService:
             self.post_sec_service.persist_email_metadata_and_category(db_client, email_records, ml_batch_outputs),
             self.fact_service.persist_email_facts(db_client, email_records, ml_batch_outputs)
         )
+        force_garbage_collection()

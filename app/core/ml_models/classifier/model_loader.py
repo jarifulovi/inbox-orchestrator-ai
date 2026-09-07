@@ -1,13 +1,16 @@
 import torch
 from pathlib import Path
+from typing import Dict, List, Optional
 from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
     PreTrainedTokenizer
 )
-from typing import Dict, Optional, List
 
 from app.core.schemas.email_classifications import EmailClassificationPrediction
+from app.core.services.utils.memory_utils import force_garbage_collection, apply_thread_limits
+
+apply_thread_limits()
 
 BEST_MODEL_FOLDER = "best_model_fold_2_best"
 
@@ -24,11 +27,14 @@ ARTIFACTS_DIR = BASE_PATH / "artifacts"
 
 class ClassifierModelLoader:
     def __init__(self):
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
+        try:
+            torch.set_num_threads(2)
+        except Exception:
+            pass
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model_dir = ARTIFACTS_DIR / BEST_MODEL_FOLDER
-        print(f"[EmailClassifier] Loading single optimized classifier model: {BEST_MODEL_FOLDER}")
+        print(f"[EmailClassifier] Loading PyTorch classifier model from: {model_dir}")
 
         tokenizer: Optional[PreTrainedTokenizer] = AutoTokenizer.from_pretrained(str(model_dir))
         if tokenizer is None:
@@ -45,6 +51,7 @@ class ClassifierModelLoader:
 
         self.model.to(self.device)
         self.model.eval()
+        force_garbage_collection()
 
     def predict(self, email_texts: List[str]) -> List[EmailClassificationPrediction]:
         if self.tokenizer is None or self.model is None:
@@ -84,4 +91,7 @@ class ClassifierModelLoader:
                     probabilities=probability_map
                 )
             )
+
+        force_garbage_collection()
         return results
+

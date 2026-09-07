@@ -7,7 +7,13 @@ from app.core.ml_models.unified_constants import FACT_EXTRACTOR_MODEL_VERSION
 
 class MLFactService:
     def __init__(self):
-        self.fact_extractor_pipeline = FactExtractor()
+        self._fact_extractor_pipeline = None
+
+    @property
+    def fact_extractor_pipeline(self) -> FactExtractor:
+        if self._fact_extractor_pipeline is None:
+            self._fact_extractor_pipeline = FactExtractor()
+        return self._fact_extractor_pipeline
 
     def extract_facts_selectively(
             self,

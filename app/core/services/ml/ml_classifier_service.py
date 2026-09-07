@@ -44,7 +44,13 @@ class MLClassifierService:
     ]
 
     def __init__(self):
-        self.classifier_engine = EmailClassifier()
+        self._classifier_engine = None
+
+    @property
+    def classifier_engine(self) -> EmailClassifier:
+        if self._classifier_engine is None:
+            self._classifier_engine = EmailClassifier()
+        return self._classifier_engine
 
     def predict_intent_with_gmail_shortcuts(self, safe_nodes: list[dict]) -> list[Any]:
         """

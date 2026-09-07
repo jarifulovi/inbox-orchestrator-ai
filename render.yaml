@@ -17,6 +17,12 @@ services:
         value: production
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: OMP_NUM_THREADS
+        value: "2"
+      - key: MKL_NUM_THREADS
+        value: "2"
+      - key: OPENBLAS_NUM_THREADS
+        value: "2"
 
   # 2. Integrated Background Worker Daemon (Email Sync, ML Recovery & Thread Orchestration)
   - type: worker
@@ -31,3 +37,10 @@ services:
         value: production
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: OMP_NUM_THREADS
+        value: "2"
+      - key: MKL_NUM_THREADS
+        value: "2"
+      - key: OPENBLAS_NUM_THREADS
+        value: "2"
+

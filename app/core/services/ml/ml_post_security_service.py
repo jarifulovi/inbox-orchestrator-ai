@@ -7,8 +7,20 @@ from app.core.ml_models.unified_constants import CLASSIFIER_MODEL_VERSION
 
 class MLPostSecurityService:
     def __init__(self):
-        self.post_security_pipeline = PostSecurityValidator()
-        self.embedder = EmailEmbedder()
+        self._post_security_pipeline = None
+        self._embedder = None
+
+    @property
+    def post_security_pipeline(self) -> PostSecurityValidator:
+        if self._post_security_pipeline is None:
+            self._post_security_pipeline = PostSecurityValidator()
+        return self._post_security_pipeline
+
+    @property
+    def embedder(self) -> EmailEmbedder:
+        if self._embedder is None:
+            self._embedder = EmailEmbedder()
+        return self._embedder
 
     def evaluate_post_security(
             self,

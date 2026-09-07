@@ -6,6 +6,13 @@
 # Set PYTHONPATH to the current directory so imports work correctly
 export PYTHONPATH=$(pwd)
 
+# Cap OpenMP, MKL, and OpenBLAS thread allocation pools for CPU optimization
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+export VECLIB_MAXIMUM_THREADS=2
+export NUMEXPR_NUM_THREADS=2
+
 # Default options
 SKIP_ML_VAL="False"
 COMMAND=""
