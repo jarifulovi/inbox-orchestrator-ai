@@ -1,9 +1,12 @@
 fastapi
 uvicorn
 google-genai
+transformers
+torch
 supabase
 python-dotenv
 pydantic
+spacy
 dateparser
 contractions==0.1.73
 google-api-python-client

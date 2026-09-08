@@ -1,11 +1,17 @@
-import torch
+try:
+    import torch
+    from transformers import (
+        AutoTokenizer,
+        AutoModelForSequenceClassification,
+        PreTrainedTokenizer
+    )
+except ImportError:
+    torch = None
+    AutoTokenizer = None
+    AutoModelForSequenceClassification = None
+    PreTrainedTokenizer = None
 from pathlib import Path
 from typing import Dict, List, Optional
-from transformers import (
-    AutoTokenizer,
-    AutoModelForSequenceClassification,
-    PreTrainedTokenizer
-)
 
 from app.core.schemas.email_classifications import EmailClassificationPrediction
 from app.core.services.utils.memory_utils import force_garbage_collection, apply_thread_limits

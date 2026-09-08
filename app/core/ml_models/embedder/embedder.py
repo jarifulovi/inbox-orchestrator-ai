@@ -1,6 +1,12 @@
 import threading
-import torch
-from transformers import AutoTokenizer, AutoModel
+try:
+    import torch
+    from transformers import AutoTokenizer, AutoModel
+except ImportError:
+    torch = None
+    AutoTokenizer = None
+    AutoModel = None
+
 from app.core.services.utils.memory_utils import force_garbage_collection, apply_thread_limits
 
 apply_thread_limits()

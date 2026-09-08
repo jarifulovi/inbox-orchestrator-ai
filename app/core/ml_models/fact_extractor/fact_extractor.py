@@ -1,10 +1,11 @@
-import spacy
+try:
+    import spacy
+    import app.core.ml_models.fact_extractor.spacy_engine
+except ImportError:
+    spacy = None
 from typing import cast, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
-
-# Import spacy_engine to register the component factory
-import app.core.ml_models.fact_extractor.spacy_engine
 from app.core.schemas.email_facts import EmailFactBatchResponse, EmailFactPredictionDict
 from app.core.ml_models.fact_extractor.components.deadline_normalizer import DeadlineNormalizer
 from app.core.ml_models.fact_extractor.components.processors import TextPreprocessor, FactPostprocessor
