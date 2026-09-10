@@ -6,7 +6,7 @@ DEFAULT_SETTINGS = {
     "enable_auto_task": True,
     "enable_auto_draft": False,
     "summary_format": "paragraph",
-    "ai_model": "gemini-3.6-flash"
+    "ai_model": 2
 }
 
 
@@ -18,11 +18,17 @@ class SettingsWebService:
         user_metadata = auth_user.get("user_metadata") or {}
         raw_settings = user_metadata.get("settings") or {}
 
+        raw_ai_model = raw_settings.get("ai_model", DEFAULT_SETTINGS["ai_model"])
+        try:
+            ai_model_idx = int(raw_ai_model)
+        except (ValueError, TypeError):
+            ai_model_idx = 2
+
         merged = {
             "enable_auto_task": raw_settings.get("enable_auto_task", DEFAULT_SETTINGS["enable_auto_task"]),
             "enable_auto_draft": raw_settings.get("enable_auto_draft", DEFAULT_SETTINGS["enable_auto_draft"]),
             "summary_format": raw_settings.get("summary_format", DEFAULT_SETTINGS["summary_format"]),
-            "ai_model": raw_settings.get("ai_model", DEFAULT_SETTINGS["ai_model"]),
+            "ai_model": ai_model_idx,
         }
         return UserSettingsPayload(**merged)
 

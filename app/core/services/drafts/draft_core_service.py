@@ -84,7 +84,18 @@ class CoreDraftService:
                 .execute()
             resolved_tasks = tasks_res.data or []
 
-        # 5. Execute LLM prompt generation
+        # 5. Fetch user's saved preferred model setting (int index)
+        user_ai_model = None
+        try:
+            user_auth_res = self.db.auth.admin.get_user_by_id(user_id)
+            if user_auth_res and user_auth_res.user:
+                meta = user_auth_res.user.user_metadata or {}
+                settings = meta.get("settings") or {}
+                user_ai_model = settings.get("ai_model")
+        except Exception:
+            pass
+
+        # 6. Execute LLM prompt generation
         from app.core.llm.client import LLMClient
         from app.core.services.threads.thread_llm_service import ThreadLLMService
 
@@ -98,7 +109,8 @@ class CoreDraftService:
             email_facts=facts,
             resolved_tasks=resolved_tasks,
             ai_instructions=ai_instructions or "",
-            tone=tone or "Professional"
+            tone=tone or "Professional",
+            model=user_ai_model
         )
 
         suggested_subject = (

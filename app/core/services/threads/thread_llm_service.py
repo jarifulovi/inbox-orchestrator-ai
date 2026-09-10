@@ -1,5 +1,5 @@
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from app.core.llm.client import LLMClient
 from app.core.schemas.tasks import UnifiedThreadOrchestrationResponse
 from app.core.services.utils.llm_content_compressor import LLMContentCompressorService
@@ -253,7 +253,8 @@ Tone Directive Requested: {selected_tone_rule} ({tone})
         email_facts: List[Dict[str, Any]],
         resolved_tasks: List[Dict[str, Any]],
         ai_instructions: str,
-        tone: str = "Professional"
+        tone: str = "Professional",
+        model: Optional[Union[int, str]] = None
     ) -> str:
         """Queries Gemini LLM API to generate plain text manual draft reply content."""
         prompt = self.build_manual_draft_prompt(
@@ -267,6 +268,7 @@ Tone Directive Requested: {selected_tone_rule} ({tone})
         )
         raw_text = self.llm.generate_text(
             prompt=prompt,
+            model=model,
             system_instruction=MANUAL_DRAFT_SYSTEM_INSTRUCTION
         )
         return raw_text.strip() if raw_text else ""

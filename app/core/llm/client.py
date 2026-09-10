@@ -1,10 +1,11 @@
 import os
-from typing import Type, TypeVar, cast
+from typing import Type, TypeVar, Union, Optional, cast
 from pydantic import BaseModel
 from google import genai
 from google.genai import types
 
 from app.core.services.utils.llm_context_recorder import LLMContextRecorder
+from app.core.llm.model_registry import get_model_name, DEFAULT_MODEL_NAME
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -18,23 +19,21 @@ class LLMClient:
 
         # Initialize sync client (use context managers where possible)
         self.client = genai.Client()
-        self.default_model = "gemini-3.6-flash"
+        self.default_model = DEFAULT_MODEL_NAME  # Default Index 1: "gemini-3.5-flash-lite"
         self.recorder = LLMContextRecorder()
-        # print("Available models:", [model.name for model in self.client.models.list()])
-
 
     def generate_structured_json(
         self, 
         prompt: str, 
         response_schema: Type[T], 
-        model: str | None = None,
-        system_instruction: str | None = None
+        model: Optional[Union[int, str]] = None,
+        system_instruction: Optional[str] = None
     ) -> T:
         """
         Sends a prompt to Gemini and enforces strict Pydantic structured output mapping.
         Supports native Gemini system_instruction for server-side context caching.
         """
-        target_model = model or self.default_model
+        target_model = get_model_name(model) if model is not None else self.default_model
 
         # Leverage native google-genai SDK options including system_instruction
         config = types.GenerateContentConfig(
@@ -71,15 +70,15 @@ class LLMClient:
     def generate_text(
         self, 
         prompt: str, 
-        model: str | None = None, 
+        model: Optional[Union[int, str]] = None, 
         temperature: float = 0.7,
-        system_instruction: str | None = None
+        system_instruction: Optional[str] = None
     ) -> str:
         """
         Sends a prompt to Gemini and returns raw string response text.
         Supports native Gemini system_instruction for server-side context caching.
         """
-        target_model = model or self.default_model
+        target_model = get_model_name(model) if model is not None else self.default_model
         config = types.GenerateContentConfig(
             temperature=temperature,
             system_instruction=system_instruction,

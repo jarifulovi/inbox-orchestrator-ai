@@ -33,37 +33,82 @@ ARTIFACTS_DIR = BASE_PATH / "artifacts"
 
 class ClassifierModelLoader:
     def __init__(self):
-        try:
-            torch.set_num_threads(2)
-        except Exception:
-            pass
-
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model_dir = ARTIFACTS_DIR / BEST_MODEL_FOLDER
-        print(f"[EmailClassifier] Loading PyTorch classifier model from: {model_dir}")
-
-        tokenizer: Optional[PreTrainedTokenizer] = AutoTokenizer.from_pretrained(str(model_dir))
-        if tokenizer is None:
-            raise RuntimeError(f"Failed to load tokenizer from {model_dir}")
-        self.tokenizer: PreTrainedTokenizer = tokenizer
-
-        self.model: torch.nn.Module = AutoModelForSequenceClassification.from_pretrained(
-            str(model_dir)
-        )
+        self.device = None
+        self.tokenizer = None
+        self.model = None
         self.labels: Dict[int, str] = LABELS.copy()
-        id2label = getattr(self.model.config, "id2label", None)
-        if id2label:
-            self.labels = {int(k): str(v) for k, v in id2label.items()}
 
-        self.model.to(self.device)
-        self.model.eval()
-        force_garbage_collection()
+        if torch is None or AutoTokenizer is None or AutoModelForSequenceClassification is None:
+            print("[EmailClassifier] PyTorch/Transformers not installed. Operating in lightweight fallback mode.")
+            return
+
+        try:
+            try:
+                torch.set_num_threads(2)
+            except Exception:
+                pass
+
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            model_dir = ARTIFACTS_DIR / BEST_MODEL_FOLDER
+            print(f"[EmailClassifier] Loading PyTorch classifier model from: {model_dir}")
+
+            if not model_dir.exists():
+                print(f"[EmailClassifier] Local model directory not found: '{model_dir}'. Operating in lightweight fallback mode.")
+                return
+
+            model_dir_str = str(model_dir.resolve())
+
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(model_dir_str, local_files_only=True)
+            except Exception:
+                tokenizer = AutoTokenizer.from_pretrained(model_dir_str)
+
+            if tokenizer is None:
+                print(f"[EmailClassifier] Failed to load tokenizer from {model_dir}. Operating in fallback mode.")
+                return
+            self.tokenizer = tokenizer
+
+            try:
+                self.model = AutoModelForSequenceClassification.from_pretrained(
+                    model_dir_str,
+                    local_files_only=True
+                )
+            except Exception:
+                self.model = AutoModelForSequenceClassification.from_pretrained(model_dir_str)
+
+            id2label = getattr(self.model.config, "id2label", None)
+            if id2label:
+                self.labels = {int(k): str(v) for k, v in id2label.items()}
+
+            self.model.to(self.device)
+            self.model.eval()
+            force_garbage_collection()
+        except Exception as e:
+            print(f"[EmailClassifier] Exception during model load: {e}. Falling back to default classifier mode.")
+            self.tokenizer = None
+            self.model = None
 
     def predict(self, email_texts: List[str]) -> List[EmailClassificationPrediction]:
-        if self.tokenizer is None or self.model is None:
-            raise RuntimeError("Classifier model/tokenizer is not loaded.")
         if not email_texts:
             return []
+
+        if self.tokenizer is None or self.model is None or torch is None:
+            # Render / Lightweight fallback prediction
+            fallback_map = {
+                "financial": 0.0,
+                "others": 1.0,
+                "system_automated": 0.0,
+                "work_professional": 0.0
+            }
+            return [
+                EmailClassificationPrediction(
+                    label_id=1,
+                    label="others",
+                    confidence=0.50,
+                    probabilities=fallback_map
+                )
+                for _ in email_texts
+            ]
 
         inputs = self.tokenizer(
             email_texts,
@@ -96,7 +141,7 @@ class ClassifierModelLoader:
                     confidence=round(float(conf), 4),
                     probabilities=probability_map
                 )
-            )
+                )
 
         force_garbage_collection()
         return results
