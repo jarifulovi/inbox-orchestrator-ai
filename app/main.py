@@ -58,6 +58,14 @@ async def root():
 
 @app.get("/health")
 async def get_health():
+    return {
+        "status": "ok",
+        "service": "InboxOrchestrator AI Engine"
+    }
+
+
+@app.get("/health/db")
+async def get_health_db():
     ok = is_supabase_connected()
     return {
         "status": "ok" if ok else "degraded",
