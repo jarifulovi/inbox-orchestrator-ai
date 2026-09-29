@@ -30,8 +30,6 @@ os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
 
 class AuthWebService:
-    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
     GOOGLE_PROFILE_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
     GOOGLE_SCOPES = [
         "openid",
@@ -49,6 +47,20 @@ class AuthWebService:
             "token_uri": "https://oauth2.googleapis.com/token"
         }
     }
+
+    @property
+    def frontend_url(self) -> str:
+        return os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+
+    @property
+    def google_redirect_uri(self) -> str:
+        redirect_uri = os.getenv("GOOGLE_REDIRECT_URI")
+        if not redirect_uri:
+            backend_url = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
+            if backend_url.endswith("/api"):
+                backend_url = backend_url[:-4]
+            redirect_uri = f"{backend_url}/api/auth/google/callback"
+        return redirect_uri
 
     def __init__(self, db_client):
         self.db = db_client
@@ -103,7 +115,7 @@ class AuthWebService:
             flow = Flow.from_client_config(
                 self.GOOGLE_CLIENT_CONFIG,
                 scopes=self.GOOGLE_SCOPES,
-                redirect_uri=self.GOOGLE_REDIRECT_URI
+                redirect_uri=self.google_redirect_uri
             )
             expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
@@ -146,14 +158,14 @@ class AuthWebService:
             background_tasks: BackgroundTasks = None
     ) -> RedirectResponse:
         if error:
-            return RedirectResponse(url=f"{self.FRONTEND_URL}/dashboard/settings?error={error}")
+            return RedirectResponse(url=f"{self.frontend_url}/dashboard/settings?error={error}")
 
         if not code or not state:
-            return RedirectResponse(url=f"{self.FRONTEND_URL}/dashboard/settings?error=missing_params")
+            return RedirectResponse(url=f"{self.frontend_url}/dashboard/settings?error=missing_params")
 
         res = self.db.table("oauth_states").select("*").eq("state", state).execute()
         if not res.data:
-            return RedirectResponse(url=f"{self.FRONTEND_URL}/dashboard/settings?error=invalid_state")
+            return RedirectResponse(url=f"{self.frontend_url}/dashboard/settings?error=invalid_state")
 
         state_record = res.data[0]
         user_id = state_record["user_id"]
@@ -162,7 +174,7 @@ class AuthWebService:
 
         if datetime.now(timezone.utc) > expires_at:
             self.db.table("oauth_states").delete().eq("state", state).execute()
-            return RedirectResponse(url=f"{self.FRONTEND_URL}/dashboard/settings?error=state_expired")
+            return RedirectResponse(url=f"{self.frontend_url}/dashboard/settings?error=state_expired")
 
         self.db.table("oauth_states").delete().eq("state", state).execute()
 
@@ -170,7 +182,7 @@ class AuthWebService:
             flow = Flow.from_client_config(
                 self.GOOGLE_CLIENT_CONFIG,
                 scopes=self.GOOGLE_SCOPES,
-                redirect_uri=self.GOOGLE_REDIRECT_URI
+                redirect_uri=self.google_redirect_uri
             )
             flow.code_verifier = code_verifier
 
@@ -239,11 +251,11 @@ class AuthWebService:
                     raise Exception("Failed to save connected account record")
                 account_id = new_account_res.data[0]["id"]
 
-            return RedirectResponse(url=f"{self.FRONTEND_URL}/dashboard/settings?google_connected=true")
+            return RedirectResponse(url=f"{self.frontend_url}/dashboard/settings?google_connected=true")
 
         except Exception as e:
             print(f"Error handling OAuth callback: {e}")
-            return RedirectResponse(url=f"{self.FRONTEND_URL}/dashboard/settings?error=oauth_failed")
+            return RedirectResponse(url=f"{self.frontend_url}/dashboard/settings?error=oauth_failed")
 
     def refresh_access_token(self, account_id: str) -> str:
         res = self.db.table("connected_accounts").select("*").eq("id", account_id).single().execute()
