@@ -197,13 +197,17 @@ class ThreadWebService:
 
             # Derive workflow status
             w_status = t.get("workflow_status")
-            if not w_status or w_status not in VALID_WORKFLOW_STATUSES:
+            if not w_status or str(w_status).strip().lower() not in VALID_WORKFLOW_STATUSES:
                 w_status = "needs_action"
+            else:
+                w_status = str(w_status).strip().lower()
 
             # Derive priority
             prio = t.get("priority")
-            if not prio or prio not in VALID_THREAD_PRIORITIES:
+            if not prio or str(prio).strip().lower() not in VALID_THREAD_PRIORITIES:
                 prio = "medium"
+            else:
+                prio = str(prio).strip().lower()
 
             last_date = t.get("last_message_at") or t.get("created_at")
             task_count = pending_task_counts.get(t_id, 0)
@@ -327,6 +331,7 @@ class ThreadWebService:
         # Enrich thread record for frontend complete interface
         last_date = thread.get("last_message_at") or thread.get("created_at")
         thread["security_trust_level"] = overall_security_level
+        thread["priority"] = str(thread.get("priority") or "medium").strip().lower()
         thread["tasks_count"] = len(tasks)
         thread["pending_task_count"] = len([t for t in tasks if t.get("status") == "pending"])
         thread["timestamp"] = last_date
