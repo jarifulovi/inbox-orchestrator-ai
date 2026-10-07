@@ -25,48 +25,38 @@ def _parse_hf_vector(data: Any) -> Optional[List[float]]:
 
 async def _get_query_embedding(query: str) -> List[float]:
     """
-    Generates 384-dimensional query vector via Hugging Face Serverless API (0 MB PyTorch RAM).
-    Falls back to local EmailEmbedder if PyTorch is installed locally.
+    Generates a 384-dimensional query vector for Smart Vector Search.
+    1. Local Dev: Uses local EmailEmbedder if PyTorch is installed locally (~10ms).
+    2. Deployed Production (Render): Uses Gemini Embedding API (0 MB RAM, 0 Cost, 384-dim).
     """
-    hf_token = os.getenv("HF_TOKEN", "")
-    urls = [
-        "https://router.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2",
-        "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2",
-        "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
-    ]
-    headers = {"Content-Type": "application/json"}
-    if hf_token:
-        headers["Authorization"] = f"Bearer {hf_token}"
-
-    for url in urls:
-        # 1. Try httpx if token is set or endpoint is available
-        try:
-            async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-                res = await client.post(url, headers=headers, json={"inputs": query})
-                if res.status_code == 200:
-                    parsed = _parse_hf_vector(res.json())
-                    if parsed:
-                        return parsed
-        except Exception:
-            pass
-
-        # 2. Try urllib fallback
-        try:
-            req_data = json.dumps({"inputs": query}).encode("utf-8")
-            req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                if resp.status == 200:
-                    parsed = _parse_hf_vector(json.loads(resp.read().decode("utf-8")))
-                    if parsed:
-                        return parsed
-        except Exception:
-            pass
-
+    # 1. Try local PyTorch EmailEmbedder first (fast local dev)
     try:
         from app.core.ml_models.embedder.embedder import EmailEmbedder
-        return EmailEmbedder().generate_embeddings([query])[0]
+        vec = EmailEmbedder().generate_embeddings([query])[0]
+        if vec and len(vec) == 384:
+            return vec
     except Exception:
-        return [0.0] * 384
+        pass
+
+    # 2. Deployed Production Fallback: Gemini Embedding API (0 MB RAM)
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    if gemini_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={gemini_key}"
+            payload = {
+                "content": {"parts": [{"text": query}]},
+                "output_dimensionality": 384
+            }
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.post(url, json=payload)
+                if res.status_code == 200:
+                    vec = res.json().get("embedding", {}).get("values", [])
+                    if vec and len(vec) == 384:
+                        return vec
+        except Exception as ex:
+            print(f"[SEARCH EMBEDDING WARNING] Gemini Cloud Embedding failed: {ex}")
+
+    return [0.0] * 384
 
 
 def _extract_email_address(raw_str: str) -> str:
