@@ -155,12 +155,34 @@ class CoreSearchService:
         if not matched_emails:
             return []
 
+        # Fetch full email details for matched email IDs if missing subject/snippet
+        matched_email_ids = [str(e["id"]) for e in matched_emails if e.get("id")]
+        email_details_map = {}
+        if matched_email_ids:
+            try:
+                details_res = self.db.table("emails") \
+                    .select("id, thread_id, subject, snippet, sender, sender_name, received_at, recipients") \
+                    .in_("id", matched_email_ids) \
+                    .execute()
+                if details_res and details_res.data:
+                    email_details_map = {str(d["id"]): d for d in details_res.data}
+            except Exception as ex:
+                print(f"[SEARCH ERROR] Failed to fetch email details: {ex}")
+
         # 4. Build Thread Match Results (Deduplicated by thread_id) & Extract Contacts
         thread_results: List[Dict[str, Any]] = []
         seen_threads = set()
         contacts_map: Dict[str, Dict[str, Any]] = {}
 
         for email in matched_emails:
+            e_id = str(email.get("id"))
+            details = email_details_map.get(e_id, {})
+            # Merge details into email dict
+            subject_val = email.get("subject") or details.get("subject")
+            snippet_val = email.get("snippet") or details.get("snippet")
+            sender_val = email.get("sender") or details.get("sender")
+            sender_name_val = email.get("sender_name") or details.get("sender_name")
+            received_at_val = email.get("received_at") or details.get("received_at")
             t_id = str(email["thread_id"]) if email.get("thread_id") else None
             try:
                 raw_sim = email.get("similarity")
@@ -176,12 +198,12 @@ class CoreSearchService:
                 thread_results.append({
                     "id": f"thread-{t_id}",
                     "type": "thread",
-                    "title": email.get("subject") or "(No Subject)",
-                    "snippet": email.get("snippet") or "",
+                    "title": subject_val or "(No Subject)",
+                    "snippet": snippet_val or "",
                     "relevance_score": sim_val,
-                    "timestamp": email.get("received_at"),
+                    "timestamp": received_at_val,
                     "metadata": {
-                        "sender": email.get("sender_name") or email.get("sender", ""),
+                        "sender": sender_name_val or sender_val or "",
                         "priority": "medium",
                         "threadId": t_id,
                         "emailId": str(email["id"])
