@@ -9,9 +9,10 @@ class PreSecurityFilter:
         print("[PRE-SECURITY] Initializing Pass 1 Context-Free Core Engine...")
         # Compile heavy regex patterns once during initialization for high-speed performance
         self.injection_patterns = [
-            re.compile(r"ignore\s+(?:all\s+)?prior\s+instructions", re.IGNORECASE),
+            re.compile(r"ignore\s+(?:all\s+)?(?:prior|previous|earlier)\s+(?:AI\s+)?instructions", re.IGNORECASE),
             re.compile(r"system\s+override", re.IGNORECASE),
-            re.compile(r"override\s+this\s+prompt", re.IGNORECASE)
+            re.compile(r"override\s+this\s+prompt", re.IGNORECASE),
+            re.compile(r"print\s+system\s+prompt", re.IGNORECASE)
         ]
         self.abuse_patterns = [
             re.compile(r"(?:hacker|exploit|drop\s+table|delete\s+from)", re.IGNORECASE)
