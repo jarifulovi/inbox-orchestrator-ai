@@ -106,18 +106,22 @@ class ThreadCoreService:
             for f in facts_to_process
         ]
 
-    def prepare_email_manifest(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def prepare_email_manifest(self, emails: List[Dict[str, Any]], user_email: Optional[str] = None) -> List[Dict[str, Any]]:
         """Compresses email bodies and formats message manifest for LLM prompts."""
-        return [
-            {
+        manifest = []
+        for e in emails:
+            sender_email = e.get("sender") or ""
+            is_user = bool(user_email and sender_email.lower() == user_email.lower())
+            role = "[USER / ME]" if is_user else f"[EXTERNAL: {e.get('sender_name') or sender_email}]"
+            manifest.append({
                 "id": e["id"],
-                "sender": e["sender"],
-                "sender_name": e["sender_name"],
-                "received_at": e["received_at"],
-                "body_compressed": LLMContentCompressorService.compress_email_body(e["body"])
-            }
-            for e in emails
-        ]
+                "role": role,
+                "sender": sender_email,
+                "sender_name": e.get("sender_name"),
+                "received_at": e.get("received_at"),
+                "body_compressed": LLMContentCompressorService.compress_email_body(e.get("body", ""))
+            })
+        return manifest
 
     def prepare_context_memory(self, emails: List[Dict[str, Any]], thread_summary: Optional[str]) -> Dict[str, Any]:
         """Serializes thread message manifest and summary into context_memory JSON."""

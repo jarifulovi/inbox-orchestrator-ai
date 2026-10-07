@@ -12,12 +12,16 @@ class MLPreSecurityService:
         and cuts it at a safe length to protect regex engines.
         """
         for node in email_nodes:
-            # 1. Strip out html
             raw_input = node.get("body") or node.get("snippet") or ""
             raw_text = self.html_to_text(raw_input)
+            # 2. Strip quoted reply chains so ML inference processes original message content only
+            from app.core.services.utils.llm_content_compressor import LLMContentCompressorService
+            cleaned_text = LLMContentCompressorService.strip_replies_and_signatures(raw_text)
+            if not cleaned_text or len(cleaned_text.strip()) < 5:
+                cleaned_text = raw_text
 
-            # 2. Standardize all line break formats and strip empty trailing gaps
-            text = raw_text.replace("\r\n", "\n").replace("\r", "\n")
+            # 3. Standardize all line break formats and strip empty trailing gaps
+            text = cleaned_text.replace("\r\n", "\n").replace("\r", "\n")
             lines = [line.strip() for line in text.split("\n") if line.strip()]
             text = "\n".join(lines)
 

@@ -256,7 +256,7 @@ class ThreadOrchestrator:
                 model=ai_model
             )
         else:
-            email_manifest = self.orchestration_service.prepare_email_manifest(emails)
+            email_manifest = self.orchestration_service.prepare_email_manifest(emails, user_email)
             response = self.orchestration_service.orchestrate_thread_via_llm(
                 thread_subject=thread.get("subject") or "No Subject",
                 actions_payload=facts_payload,
