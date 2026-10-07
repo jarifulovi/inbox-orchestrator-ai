@@ -128,9 +128,10 @@ class CoreSearchService:
         else:
             # 3. Tiered Threshold Schedule with Early Exit for Vector Search
             threshold_schedule = [
-                (0.65, 3),  # Tier 1: High confidence (exit if >= 3 matches)
-                (0.45, 1),  # Tier 2: Moderate confidence (exit if >= 1 match)
-                (0.25, 1)   # Tier 3: Broad fallback
+                (0.65, 1),  # Tier 1: High confidence (exit if >= 1 match)
+                (0.55, 1),  # Tier 2: Moderate-high confidence (exit if >= 1 match)
+                (0.45, 1),  # Tier 3: Moderate confidence
+                (0.35, 1)   # Tier 4: Broad fallback
             ]
 
             for threshold, min_matches in threshold_schedule:
