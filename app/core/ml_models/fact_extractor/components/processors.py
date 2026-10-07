@@ -216,11 +216,16 @@ class FactPostprocessor:
 
         processed_facts = []
         seen_signatures = set()
+        seen_sentences = set()
 
         for fact in facts:
             fact_type = fact.get("fact_type", "fact")
             payload = fact.get("payload", {})
             source_sentence = cls._normalize_signature_value(fact.get("source_sentence", ""))
+
+            # Prevent extracting duplicate facts from the exact same sentence
+            if source_sentence and source_sentence in seen_sentences:
+                continue
 
             # Sanitize and check tasks and commitments
             if fact_type in {"task", "commitment"}:
@@ -259,6 +264,8 @@ class FactPostprocessor:
 
             if signature not in seen_signatures:
                 seen_signatures.add(signature)
+                if source_sentence:
+                    seen_sentences.add(source_sentence)
                 processed_facts.append(fact)
 
         return processed_facts

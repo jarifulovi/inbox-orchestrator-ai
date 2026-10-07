@@ -148,19 +148,18 @@ class PostSecurityValidator:
             payload = fact.get("payload") or {}
             verb = payload.get("action", "").lower()
 
-            # Intersection 1: Financial Label + Sensitive Request Actions
-            if category_idx == 1 and (verb in high_concern_verbs):
-                # Map using the exact manifest strings
+            # Intersection 1: Financial Label (category_idx == 0) + High Concern Actions
+            if category_idx == 0 and (verb in high_concern_verbs):
                 detected_risks.append(SECURITY_RISK_CATEGORIES[1])  # "financial_anomaly"
                 return True
 
-            # Intersection 2: Promotional Label + High Concern Verification Link Requests
-            if category_idx == 3 and (verb in high_concern_verbs):
+            # Intersection 2: Others/Uncategorized Label (category_idx == 1) + High Concern Verbs
+            if category_idx == 1 and (verb in high_concern_verbs):
                 detected_risks.append(SECURITY_RISK_CATEGORIES[2])  # "marketing_phish_vector"
                 return True
 
-            # Intersection 3: Automated/System Alerts + Destructive Action Tasks
-            if category_idx == 5 and (verb in high_risk_verbs):
+            # Intersection 3: Automated/System Alerts (category_idx == 2) + Destructive Action Tasks
+            if category_idx == 2 and (verb in high_risk_verbs):
                 detected_risks.append(SECURITY_RISK_CATEGORIES[4])  # "spoofing_target"
                 return True
 

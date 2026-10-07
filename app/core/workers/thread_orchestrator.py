@@ -289,9 +289,19 @@ class ThreadOrchestrator:
             )
 
             if new_tasks and enable_auto_task:
-                self.db.table("tasks") \
-                    .upsert(new_tasks, on_conflict="user_id, action_fingerprint") \
-                    .execute()
+                # Deduplicate tasks by action_fingerprint to prevent Postgres ON CONFLICT DO UPDATE error 21000
+                unique_tasks = []
+                seen_fps = set()
+                for task_record in new_tasks:
+                    fp = task_record.get("action_fingerprint")
+                    if fp and fp not in seen_fps:
+                        seen_fps.add(fp)
+                        unique_tasks.append(task_record)
+
+                if unique_tasks:
+                    self.db.table("tasks") \
+                        .upsert(unique_tasks, on_conflict="user_id, action_fingerprint") \
+                        .execute()
 
             workflow_status = self.orchestration_service.derive_workflow_status(
                 thread=thread,
