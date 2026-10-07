@@ -55,7 +55,7 @@ class ThreadWebService:
                     query = query.eq("workflow_status", workflow_status.strip().lower())
 
                 if priority and priority.strip() and priority.strip().lower() != "all":
-                    query = query.eq("priority", priority.strip().lower())
+                    query = query.ilike("priority", priority.strip())
 
                 if category and category.strip() and category.strip().lower() != "all":
                     cat_clean = category.strip().lower()
