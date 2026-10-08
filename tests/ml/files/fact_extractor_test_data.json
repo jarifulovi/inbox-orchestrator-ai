@@ -1,0 +1,125 @@
+[
+  {
+    "sentence": "Please submit the quarterly reports by tomorrow morning.",
+    "expected_type": "task",
+    "expected_payload": {
+      "action": "submit",
+      "object": "quarterly reports",
+      "actor": "recipient"
+    }
+  },
+  {
+    "sentence": "I will send you the project repository link after this sync.",
+    "expected_type": "commitment",
+    "expected_payload": {
+      "action": "send",
+      "object": "project repository link",
+      "actor": "sender"
+    }
+  },
+  {
+    "sentence": "Did we finalize the database migration plans?",
+    "expected_type": "question",
+    "expected_payload": {
+      "actor": "sender"
+    }
+  },
+  {
+    "sentence": "We decided to deploy the service on Friday afternoon.",
+    "expected_type": "decision",
+    "expected_payload": {
+      "action": "deploy",
+      "object": "service",
+      "actor": "both"
+    }
+  },
+  {
+    "sentence": "The database contains a backup of the customer tables.",
+    "expected_type": "fact",
+    "expected_payload": {
+      "actor": "third-party"
+    }
+  },
+  {
+    "sentence": "Please check the database connection logs.",
+    "expected_type": "task",
+    "expected_payload": {
+      "action": "check",
+      "object": "database connection logs",
+      "actor": "recipient"
+    }
+  },
+  {
+    "sentence": "I will call the client tomorrow at 10 AM.",
+    "expected_type": "commitment",
+    "expected_payload": {
+      "action": "call",
+      "object": "client",
+      "actor": "sender"
+    }
+  },
+  {
+    "sentence": "Are you available for a quick sync this afternoon?",
+    "expected_type": "question",
+    "expected_payload": {
+      "actor": "recipient"
+    }
+  },
+  {
+    "sentence": "We agreed to reschedule the release date.",
+    "expected_type": "decision",
+    "expected_payload": {
+      "action": "reschedule",
+      "object": "release date",
+      "actor": "both"
+    }
+  },
+  {
+    "sentence": "The new dashboard is ready for internal testing.",
+    "expected_type": "fact",
+    "expected_payload": {
+      "actor": "third-party"
+    }
+  },
+  {
+    "sentence": "Remember to send the update report before you leave.",
+    "expected_type": "task",
+    "expected_payload": {
+      "action": "send",
+      "object": "update report",
+      "actor": "recipient"
+    }
+  },
+  {
+    "sentence": "We shall email the credentials to the client.",
+    "expected_type": "commitment",
+    "expected_payload": {
+      "action": "email",
+      "object": "credentials",
+      "actor": "sender"
+    }
+  },
+  {
+    "sentence": "When can we expect the final proposal?",
+    "expected_type": "question",
+    "expected_payload": {
+      "actor": "recipient"
+    }
+  },
+  {
+    "sentence": "The team has resolved to block the old domain.",
+    "expected_type": "decision",
+    "expected_payload": {
+      "action": "block",
+      "object": "old domain",
+      "actor": "both"
+    }
+  },
+  {
+    "sentence": "The server was restarted to apply the security patches.",
+    "expected_type": "fact",
+    "expected_payload": {
+      "actor": "third-party"
+    }
+  }
+]

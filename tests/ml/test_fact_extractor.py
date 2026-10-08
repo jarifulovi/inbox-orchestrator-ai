@@ -1,5 +1,6 @@
 import json
 import unittest
+from pathlib import Path
 from uuid import uuid4
 
 from app.core.ml_models.fact_extractor.fact_extractor import FactExtractor
@@ -7,7 +8,8 @@ from app.core.ml_models.fact_extractor.fact_extractor import FactExtractor
 
 class FactExtractorIntegrationTests(unittest.TestCase):
     def setUp(self):
-        with open("tests/files/fact_extractor_test_data.json", "r", encoding="utf-8") as fh:
+        test_file_path = Path(__file__).parent / "files" / "fact_extractor_test_data.json"
+        with open(test_file_path, "r", encoding="utf-8") as fh:
             self.raw = json.load(fh)
 
         try:

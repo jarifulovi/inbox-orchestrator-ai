@@ -1,0 +1,303 @@
+[
+{
+    "content": "Please review the draft.",
+    "expected": [
+      {"verb": "review", "object": "draft"}
+    ]
+  },
+  {
+    "content": "Kindly submit the invoice by EOD.",
+    "expected": [
+      {"verb": "submit", "object": "invoice"}
+    ]
+  },
+  {
+    "content": "Can you arrange the meeting next week?",
+    "expected": [
+      {"verb": "arrange", "object": "meeting"}
+    ]
+  },
+  {
+    "content": "Please review the contract and approve the payment.",
+    "expected": [
+      {"verb": "review", "object": "contract"},
+      {"verb": "approve", "object": "payment"}
+    ]
+  },
+  {
+    "content": "Please send the invoice.",
+    "expected": [
+      {"verb": "send", "object": "invoice"}
+    ]
+  },
+  {
+    "content": "Please print the quarter report and place it on my desk before you leave today.",
+    "expected": [
+      {"verb": "print", "object": "quarter report"},
+      {"verb": "place", "object": "quarter report"}
+    ]
+  },
+  {
+    "content": "You need to call the enterprise client right now to resolve their payment issue.",
+    "expected": [
+      {"verb": "call", "object": "enterprise client"}
+    ]
+  },
+  {
+    "content": "Make sure you submit the vendor invoice by June 5th so accounting can process it on time.",
+    "expected": [
+      {"verb": "submit", "object": "vendor invoice"}
+    ]
+  },
+  {
+    "content": "We must update our internal API documentation before the integration branch is merged.",
+    "expected": [
+      {"verb": "update", "object": "internal api documentation"}
+    ]
+  },
+  {
+    "content": "Please review the employment contract and the project proposal as soon as possible.",
+    "expected": [
+      {"verb": "review", "object": "employment contract"},
+      {"verb": "review", "object": "project proposal"}
+    ]
+  },
+  {
+    "content": "You need to submit report now to resolve their issue but also provide me a copy",
+    "expected": [
+      {"verb": "submit", "object": "report"},
+      {"verb": "provide", "object": "copy"}
+    ]
+  },
+  {
+    "content": "Make sure you submit the invoice so accounting can process it on time.",
+    "expected": [
+      {"verb": "submit", "object": "invoice"}
+    ]
+  },
+
+
+
+  {
+    "content": "Please review, sign, and return the agreement.",
+    "expected": [
+      {"verb": "review", "object": "agreement"},
+      {"verb": "sign", "object": "agreement"},
+      {"verb": "return", "object": "agreement"}
+    ]
+  },
+  {
+    "content": "Download the attachment and upload it to the portal.",
+    "expected": [
+      {"verb": "download", "object": "attachment"},
+      {"verb": "upload", "object": "attachment"}
+    ]
+  },
+  {
+    "content": "Review the proposal and send your feedback.",
+    "expected": [
+      {"verb": "review", "object": "proposal"},
+      {"verb": "send", "object": "feedback"}
+    ]
+  },
+  {
+    "content": "If possible, update the spreadsheet and notify the team.",
+    "expected": [
+      {"verb": "update", "object": "spreadsheet"},
+      {"verb": "notify", "object": "team"}
+    ]
+  },
+  {
+    "content": "Remember to renew the SSL certificate.",
+    "expected": [
+      {"verb": "renew", "object": "SSL certificate"}
+    ]
+  },
+  {
+    "content": "Please create a ticket for the outage.",
+    "expected": [
+      {"verb": "create", "object": "ticket"}
+    ]
+  },
+  {
+    "content": "Can you please create a ticket for the outage?",
+    "expected": [
+      {"verb": "create", "object": "ticket"}
+    ]
+  },
+  {
+    "content": "Please review the proposal, revise the budget, and resend both files.",
+    "expected": [
+      {"verb": "review", "object": "proposal"},
+      {"verb": "revise", "object": "budget"},
+      {"verb": "resend", "object": "files"}
+    ]
+  },
+  {
+    "content": "Review the requirements document before implementing the feature.",
+    "expected": [
+      {"verb": "review", "object": "requirements document"}
+    ]
+  },
+  {
+    "content": "Please archive the completed projects.",
+    "expected": [
+      {"verb": "archive", "object": "completed projects"}
+    ]
+  },
+  {
+    "content": "Forward this email to the legal team.",
+    "expected": [
+      {"verb": "forward", "object": "email"}
+    ]
+  },
+  {
+    "content": "Schedule a follow-up meeting with the client.",
+    "expected": [
+      {"verb": "schedule", "object": "follow-up meeting"}
+    ]
+  },
+  {
+    "content": "Assign the task to Sarah and inform the stakeholders.",
+    "expected": [
+      {"verb": "assign", "object": "task"},
+      {"verb": "inform", "object": "stakeholders"}
+    ]
+  },
+  {
+    "content": "Please review the attached file and let me know your thoughts.",
+    "expected": [
+      {"verb": "review", "object": "attached file"}
+    ]
+  },
+  {
+    "content": "Kindly verify the payment details before processing the refund.",
+    "expected": [
+      {"verb": "verify", "object": "payment details"}
+    ]
+  },
+  {
+    "content": "Please clean up the staging database.",
+    "expected": [
+      {"verb": "clean", "object": "staging database"}
+    ]
+  },
+  {
+    "content": "Check the logs and investigate the failure.",
+    "expected": [
+      {"verb": "check", "object": "logs"},
+      {"verb": "investigate", "object": "failure"}
+    ]
+  },
+  {
+    "content": "Please resend the credentials.",
+    "expected": [
+      {"verb": "resend", "object": "credentials"}
+    ]
+  },
+  {
+    "content": "Review the proposal and the contract.",
+    "expected": [
+      {"verb": "review", "object": "proposal"},
+      {"verb": "review", "object": "contract"}
+    ]
+  },
+  {
+    "content": "Please update, test, and deploy the application.",
+    "expected": [
+      {"verb": "update", "object": "application"},
+      {"verb": "test", "object": "application"},
+      {"verb": "deploy", "object": "application"}
+    ]
+  },
+  {
+    "content": "Can someone update the wiki page?",
+    "expected": []
+  },
+  {
+    "content": "Please watch the tv show and let me know your thoughts.",
+    "expected": []
+  },
+  {
+    "content": "Please read the contract and the proposal.",
+    "expected": [
+      {"verb": "read", "object": "contract"},
+      {"verb": "read", "object": "proposal"}
+    ]
+  },
+  {
+    "content": "Please review the attached files and let me know your thoughts.",
+    "expected": [
+      {"verb": "review", "object": "attached files"}
+    ]
+  },
+  {
+    "content": "Please cancel the meeting on tuesday.",
+    "expected": [
+      {"verb": "cancel", "object": "meeting"}
+    ]
+  },
+  {
+    "content": "Do not submit the invoice until the payment is received.",
+    "expected": []
+  },
+  {
+    "content": "You need to stop the service immediately to resolve the issue.",
+    "expected": [
+      {"verb": "stop", "object": "service"}
+    ]
+  },
+  {
+    "content": "Please review the updated project proposal and share your feedback by Friday afternoon.",
+    "expected": [
+      {"verb": "review", "object": "updated project proposal"},
+      {"verb": "share", "object": "feedback"}
+    ]
+  },
+  {
+    "content": "I need you to schedule a kick-off call with the engineering team for next Monday.",
+    "expected": [
+      {"verb": "schedule", "object": "kick-off call"}
+    ]
+  },
+  {
+    "content": "Make sure to download the financial ledger before the system maintenance begins tonight.",
+    "expected": [
+      {"verb": "download", "object": "financial ledger"}
+    ]
+  },
+  {
+    "content": "Can you please update the client roadmap and upload the new slide deck to the shared drive?",
+    "expected": [
+      {"verb": "update", "object": "client roadmap"},
+      {"verb": "upload", "object": "new slide deck"}
+    ]
+  },
+  {
+    "content": "You must approve the vendor contracts so we can finalize the onboarding paperwork.",
+    "expected": [
+      {"verb": "approve", "object": "vendor contracts"}
+    ]
+  },
+  {
+    "content": "We should archive the legacy database repositories to reduce our monthly cloud storage costs.",
+    "expected": [
+      {"verb": "archive", "object": "legacy database repositories"}
+    ]
+  },
+  {
+    "content": "Remember to submit your weekly timesheet before logging off today.",
+    "expected": [
+      {"verb": "submit", "object": "weekly timesheet"}
+    ]
+  },
+  {
+    "content": "John needs to schedule the database migration window for this weekend, and make sure to email the credentials to the engineering team.",
+    "expected": [
+      {"verb": "email", "object": "credentials"}
+    ]
+  }
+]
+
+
+

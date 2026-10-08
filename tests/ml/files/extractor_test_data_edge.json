@@ -1,0 +1,187 @@
+[
+  {
+    "content": "Watch the demo video when you have time.",
+    "expected": []
+  },
+  {
+    "content": "Sent from my iPhone\nPlease approve the budget.",
+    "expected": [
+      {"verb": "approve", "object": "budget"}
+    ]
+  },
+  {
+    "content": "Could you merge the feature branch?",
+    "expected": [
+      {"verb": "merge", "object": "feature branch"}
+    ]
+  },
+  {
+    "content": "Please talk to John, then print the report.",
+    "expected": [
+      {"verb": "talk", "object": ""},
+      {"verb": "print", "object": "report"}
+    ]
+  },
+  {
+    "content": "You must call the vendor to negotiate and settle the dispute.",
+    "expected": [
+      {"verb": "call", "object": "vendor"}
+    ]
+  },
+  {
+    "content": "Do not send the invoice yet.",
+    "expected": []
+  },
+  {
+    "content": "Please don't approve the purchase order until finance reviews it.",
+    "expected": []
+  },
+  {
+    "content": "The report was submitted yesterday.",
+    "expected": []
+  },
+  {
+    "content": "The contract needs to be reviewed before Friday.",
+    "expected": [
+      {"verb": "review", "object": "contract"}
+    ]
+  },
+  {
+    "content": "I would appreciate it if you could review the attached document.",
+    "expected": [
+      {"verb": "review", "object": "attached document"}
+    ]
+  },
+  {
+    "content": "It would be great if someone could update the dashboard.",
+    "expected": []
+  },
+  {
+    "content": "Reach out to the customer regarding the delay.",
+    "expected": [
+      {"verb": "reach out", "object": "customer"}
+    ]
+  },
+  {
+    "content": "Make sure the backup is completed tonight.",
+    "expected": [
+      {"verb": "complete", "object": "backup"}
+    ]
+  },
+  {
+    "content": "The backup should be completed tonight.",
+    "expected": [
+      {"verb": "complete", "object": "backup"}
+    ]
+  },
+  {
+    "content": "Please review and approve.",
+    "expected": [
+      {"verb": "review", "object": ""},
+      {"verb": "approve", "object": ""}
+    ]
+  },
+  {
+    "content": "FYI, the deployment finished successfully.",
+    "expected": []
+  },
+  {
+    "content": "For your information, the invoice has already been paid.",
+    "expected": []
+  },
+  {
+    "content": "Could you take a look at the attached presentation?",
+    "expected": [
+      {"verb": "take", "object": "look at the attached presentation"}
+    ]
+  },
+  {
+    "content": "Please have the vendor submit the updated quote.",
+    "expected": []
+  },
+  {
+    "content": "After reviewing the report, send it to management.",
+    "expected": [
+      {"verb": "review", "object": "report"},
+      {"verb": "send", "object": "report"}
+    ]
+  },
+  {
+    "content": "Review the report, then send it to management and archive a copy.",
+    "expected": [
+      {"verb": "review", "object": "report"},
+      {"verb": "send", "object": "report"},
+      {"verb": "archive", "object": "copy"}
+    ]
+  },
+  {
+    "content": "Please ensure that the security patch is installed.",
+    "expected": [
+      {"verb": "install", "object": "security patch"}
+    ]
+  },
+  {
+    "content": "No action required.",
+    "expected": []
+  },
+  {
+    "content": "Thanks for reviewing the proposal.",
+    "expected": []
+  },
+
+
+
+
+
+
+
+  {
+    "content": "Forward this email to the legal team immediately.",
+    "notes": "Tests if sentence-starting imperative adverbs misclassified as ADV or INTJ are healed to VB/VERB.",
+    "expected": [
+      {"verb": "forward", "object": "email"}
+    ]
+  },
+  {
+    "content": "Route the deployment logs to security so devops can patch the server vulnerabilities.",
+    "notes": "Tests the explicit subject guard on 'conj' chains. 'patch' belongs to devops, not the user.",
+    "expected": [
+      {"verb": "route", "object": "deployment logs"}
+    ]
+  },
+  {
+    "content": "By the way, if you have a moment, please compile the quarterly performance report.",
+    "notes": "Tests text extraction resilience when wrapped inside introductory parenthetical chatter.",
+    "expected": [
+      {"verb": "compile", "object": "quarterly performance report"}
+    ]
+  },
+  {
+    "content": "Please verify the database backups so that the engineering lead can sign off on the release.",
+    "notes": "Classic purpose clause validation. Ensure 'sign' does not leak or borrow user assignment context.",
+    "expected": [
+      {"verb": "verify", "object": "database backups"}
+    ]
+  },
+  {
+    "content": "Ship the replacement hardware to the branch office today.",
+    "notes": "Tests another asset routing verb ('Ship') running at the sentence ROOT which spaCy often labels as a noun.",
+    "expected": [
+      {"verb": "ship", "object": "replacement hardware"}
+    ]
+  },
+  {
+    "content": "Draft the architectural blueprint, by the way, the client wants to see it by tomorrow morning.",
+    "notes": "Tests an active task split by a disruptive transition phrase ('by the way') followed by a statement of desire.",
+    "expected": [
+      {"verb": "draft", "object": "architectural blueprint"}
+    ]
+  },
+  {
+    "content": "Transfer the unallocated funds to escrow so accounting can balance the ledger sheets.",
+    "notes": "Validates that your backward-tracing root logic breaks out when it encounters the explicit subject 'accounting'.",
+    "expected": [
+      {"verb": "transfer", "object": "unallocated funds"}
+    ]
+  }
+]

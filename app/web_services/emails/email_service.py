@@ -70,8 +70,8 @@ class EmailWebService:
         """
         Fetches the complete details for a single email, decoding body text and expanding metadata.
         """
-        res = self.db.table(self.table).select("*").eq("id", email_id).eq("connected_account_id", account_id).single().execute()
-        if not res.data:
+        res = self.db.table(self.table).select("*").eq("id", email_id).eq("connected_account_id", account_id).maybe_single().execute()
+        if not res or not res.data:
             raise KeyError(f"Email {email_id} not found.")
 
         data = res.data

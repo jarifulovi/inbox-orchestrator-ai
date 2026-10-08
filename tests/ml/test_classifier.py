@@ -10,7 +10,7 @@ from app.core.services.ml.ml_classifier_service import MLClassifierService
 class ClassifierUnitTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        test_file_path = Path("tests/files/classifier_test_data.json")
+        test_file_path = Path(__file__).parent / "files" / "classifier_test_data.json"
         with open(test_file_path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
             cls.test_cases = data.get("test_cases", [])

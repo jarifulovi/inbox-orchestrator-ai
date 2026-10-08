@@ -1,0 +1,244 @@
+{
+  "test_cases": [
+    {
+      "id": "work_1",
+      "subject": "Project sync tomorrow",
+      "cleaned_body": "Hi, can we schedule a quick sync tomorrow at 3 PM to discuss API integration progress and deployment updates?",
+      "expected_label": "work_professional"
+    },
+    {
+      "id": "work_2",
+      "subject": "Q3 Roadmap Strategy Review",
+      "cleaned_body": "Team, please review the attached slide deck for our upcoming Q3 product roadmap meeting.",
+      "expected_label": "work_professional"
+    },
+    {
+      "id": "work_3",
+      "subject": "Code Review Request: PR #142",
+      "cleaned_body": "Hey, could you take a look at PR #142 when you get a chance? It fixes the database connection pool leak.",
+      "expected_label": "work_professional"
+    },
+    {
+      "id": "work_4",
+      "subject": "Interview Schedule for Senior Backend Engineer",
+      "cleaned_body": "We have scheduled your technical interview for Thursday at 10:00 AM UTC. Please confirm your availability.",
+      "expected_label": "work_professional"
+    },
+    {
+      "id": "work_5",
+      "subject": "Quarterly Performance Review Discussion",
+      "cleaned_body": "Hi, let's schedule time next week to review your Q2 accomplishments and set objectives for Q3.",
+      "expected_label": "work_professional"
+    },
+    {
+      "id": "work_6",
+      "subject": "Client Proposal Feedback & Contract Revisions",
+      "cleaned_body": "The legal team has completed the review of the enterprise contract. Please find the redlined draft attached.",
+      "expected_label": "work_professional"
+    },
+    {
+      "id": "work_7",
+      "subject": "Design System Component Handoff",
+      "cleaned_body": "The Figma specs for the new dashboard widgets are finalized and ready for frontend engineering implementation.",
+      "expected_label": "work_professional"
+    },
+    {
+      "id": "work_8",
+      "subject": "Weekly Engineering Standup Meeting Notes",
+      "cleaned_body": "Summary of today's standup: microservice migration is on track, staging deployment scheduled for Friday.",
+      "expected_label": "work_professional"
+    },
+    {
+      "id": "work_9",
+      "subject": "Architecture Decision Record (ADR): Redis Cache Layer",
+      "cleaned_body": "Please review the proposed ADR for introducing Redis cluster caching to optimize thread retrieval endpoints.",
+      "expected_label": "work_professional"
+    },
+    {
+      "id": "work_10",
+      "subject": "Customer Onboarding Milestone Review",
+      "cleaned_body": "We completed Phase 1 of onboarding for Acme Corp. Let's sync on Phase 2 deliverables next Tuesday.",
+      "expected_label": "work_professional"
+    },
+    {
+      "id": "financial_1",
+      "subject": "Payment failed alert",
+      "cleaned_body": "Your recent transaction was declined due to insufficient balance. Please update your payment method to continue service.",
+      "expected_label": "financial"
+    },
+    {
+      "id": "financial_2",
+      "subject": "Monthly Invoice #1042",
+      "cleaned_body": "Please find attached your monthly invoice for cloud infrastructure hosting fees due on Sept 15.",
+      "expected_label": "financial"
+    },
+    {
+      "id": "financial_3",
+      "subject": "Bank Account Statement - August 2026",
+      "cleaned_body": "Your monthly e-statement for account ending in 4821 is now available for download in Online Banking.",
+      "expected_label": "financial"
+    },
+    {
+      "id": "financial_4",
+      "subject": "Subscription Renewal Confirmation",
+      "cleaned_body": "Thank you for renewing your annual Pro plan subscription. A charge of $120.00 has been processed to your card.",
+      "expected_label": "financial"
+    },
+    {
+      "id": "financial_5",
+      "subject": "Refund Processed Notification",
+      "cleaned_body": "We have issued a credit refund of $49.99 to your original payment method. Please allow 3-5 business days for posting.",
+      "expected_label": "financial"
+    },
+    {
+      "id": "financial_6",
+      "subject": "Tax Document 1099-MISC Available",
+      "cleaned_body": "Your 2025 Tax Form 1099-MISC is now available for secure download in your account documents portal.",
+      "expected_label": "financial"
+    },
+    {
+      "id": "financial_7",
+      "subject": "Direct Deposit Payroll Advice",
+      "cleaned_body": "Your net salary payment of $4,250.00 has been deposited to your checking account ending in 1109.",
+      "expected_label": "financial"
+    },
+    {
+      "id": "financial_8",
+      "subject": "Wire Transfer Receipt #9921",
+      "cleaned_body": "Outgoing international wire transfer of $8,500.00 to Vendor Inc has been executed successfully.",
+      "expected_label": "financial"
+    },
+    {
+      "id": "financial_9",
+      "subject": "Annual Credit Card Statement Summary",
+      "cleaned_body": "Your year-end credit card spending summary report is ready to view online. Total rewards earned: 24,500 points.",
+      "expected_label": "financial"
+    },
+    {
+      "id": "financial_10",
+      "subject": "Payment Receipt - Domain Name Renewal",
+      "cleaned_body": "Payment of $14.99 received for domain registration renewal of inboxorchestrator.com through 2027.",
+      "expected_label": "financial"
+    },
+    {
+      "id": "system_1",
+      "subject": "System maintenance completed",
+      "cleaned_body": "All backend services were successfully updated. No downtime was recorded during deployment.",
+      "expected_label": "system_automated"
+    },
+    {
+      "id": "system_2",
+      "subject": "Security notification",
+      "cleaned_body": "You allowed InboxOrchestratorAI access to some of your Google Account data roversteve772@gmail.com.",
+      "expected_label": "system_automated"
+    },
+    {
+      "id": "system_3",
+      "subject": "Verification Code: 492015",
+      "cleaned_body": "Your one-time passcode for sign-in is 492015. This code will expire in 10 minutes. Do not share it.",
+      "expected_label": "system_automated"
+    },
+    {
+      "id": "system_4",
+      "subject": "Build Failed: main branch #802",
+      "cleaned_body": "GitHub Actions workflow 'CI/CD Pipeline' failed on commit 4f9a2b. Check job logs for details.",
+      "expected_label": "system_automated"
+    },
+    {
+      "id": "system_5",
+      "subject": "AWS CloudWatch Alarm Triggered",
+      "cleaned_body": "ALARM: HighCPUUtilization in us-east-1. CPU usage exceeded threshold 85% over 5 minutes.",
+      "expected_label": "system_automated"
+    },
+    {
+      "id": "system_6",
+      "subject": "Password Reset Request",
+      "cleaned_body": "We received a request to reset your password. Click the link below to set a new password for your account.",
+      "expected_label": "system_automated"
+    },
+    {
+      "id": "system_7",
+      "subject": "New Sign-in from Recognized Device",
+      "cleaned_body": "Your account was accessed from Chrome on Linux at 10:24 PM local time. If this was you, no action is needed.",
+      "expected_label": "system_automated"
+    },
+    {
+      "id": "system_8",
+      "subject": "Supabase Database Backup Succeeded",
+      "cleaned_body": "Automated daily snapshot backup for project production-db completed successfully. Backup size: 1.4 GB.",
+      "expected_label": "system_automated"
+    },
+    {
+      "id": "system_9",
+      "subject": "SSL Certificate Expiration Warning",
+      "cleaned_body": "The SSL/TLS certificate for api.inboxorchestrator.com will expire in 7 days. Automatic renewal is pending.",
+      "expected_label": "system_automated"
+    },
+    {
+      "id": "system_10",
+      "subject": "Automated Vulnerability Alert: Dependabot",
+      "cleaned_body": "Dependabot detected 1 moderate severity security vulnerability in python dependency cryptography.",
+      "expected_label": "system_automated"
+    },
+    {
+      "id": "others_1",
+      "subject": "Casual catchup",
+      "cleaned_body": "Hey, how have you been? Just wanted to check in and see what you've been up to lately. It's been a long time!",
+      "expected_label": "others"
+    },
+    {
+      "id": "others_2",
+      "subject": "Weekend Trip Ideas",
+      "cleaned_body": "Here are 5 top weekend getaway spots near your city with great weather and scenic hiking trails.",
+      "expected_label": "others"
+    },
+    {
+      "id": "others_3",
+      "subject": "Happy Birthday!",
+      "cleaned_body": "Wishing you a wonderful birthday celebration filled with joy and happiness! Have a great day ahead.",
+      "expected_label": "others"
+    },
+    {
+      "id": "others_4",
+      "subject": "Weekly Tech & AI Digest #48",
+      "cleaned_body": "Discover the latest open source machine learning releases, LLM benchmarking tools, and tech trends.",
+      "expected_label": "others"
+    },
+    {
+      "id": "others_5",
+      "subject": "Exclusive 30% Off Clearance Sale",
+      "cleaned_body": "Don't miss our mega end-of-season clearance sale. Use code SAVE30 at checkout before midnight.",
+      "expected_label": "others"
+    },
+    {
+      "id": "others_6",
+      "subject": "Local Community Meetup Invitation",
+      "cleaned_body": "Join us this Saturday at 4 PM for our local open source developers meetup at the downtown tech hub.",
+      "expected_label": "others"
+    },
+    {
+      "id": "others_7",
+      "subject": "Favorite Podcast Episode Release",
+      "cleaned_body": "Episode 104 of Deep Tech Talks is now live: 'Building Resilient AI Agents in Production'. Listen now!",
+      "expected_label": "others"
+    },
+    {
+      "id": "others_8",
+      "subject": "Recipe Recommendations for Dinner",
+      "cleaned_body": "Looking for quick dinner ideas? Try these 15-minute quick Mediterranean pasta and salad recipes.",
+      "expected_label": "others"
+    },
+    {
+      "id": "others_9",
+      "subject": "Unsubscribe Confirmation - Travel Blog",
+      "cleaned_body": "You have been successfully unsubscribed from Weekly Travel Digest. You will no longer receive emails.",
+      "expected_label": "others"
+    },
+    {
+      "id": "others_10",
+      "subject": "Book Club Monthly Reading Selection",
+      "cleaned_body": "Our book club selection for next month is 'Designing Data-Intensive Applications'. Discussion starts on the 25th.",
+      "expected_label": "others"
+    }
+  ]
+}

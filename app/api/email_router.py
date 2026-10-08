@@ -28,12 +28,13 @@ async def view_email(
         db=Depends(get_supabase_client)
 ):
     service = EmailWebService(db)
-    email = await service.get_email_details(email_id, account_id)
-
-    if not email:
+    try:
+        email = await service.get_email_details(email_id, account_id)
+        if not email:
+            raise HTTPException(status_code=404, detail="Email not found")
+        return email
+    except KeyError:
         raise HTTPException(status_code=404, detail="Email not found")
-
-    return email
 
 
 from pydantic import BaseModel

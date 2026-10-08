@@ -1,0 +1,88 @@
+[
+  {
+    "content": "I need you to schedule a kick-off call with the engineering team for next Monday.",
+    "metrics_error": {
+      "expected_count": 1,
+      "predicted_count": 1,
+      "count_mismatch": false
+    },
+    "expected_all_tasks": [
+      [
+        "schedule",
+        "kick-off call"
+      ]
+    ],
+    "predicted_all_tasks": [
+      [
+        "schedule",
+        "call"
+      ]
+    ],
+    "missing_tasks_error": [
+      [
+        "schedule",
+        "kick-off call"
+      ]
+    ],
+    "unexpected_noise_error": [
+      [
+        "schedule",
+        "call"
+      ]
+    ]
+  },
+  {
+    "content": "We should archive the legacy database repositories to reduce our monthly cloud storage costs.",
+    "metrics_error": {
+      "expected_count": 1,
+      "predicted_count": 1,
+      "count_mismatch": false
+    },
+    "expected_all_tasks": [
+      [
+        "archive",
+        "legacy database repositories"
+      ]
+    ],
+    "predicted_all_tasks": [
+      [
+        "archive",
+        "database repositories"
+      ]
+    ],
+    "missing_tasks_error": [
+      [
+        "archive",
+        "legacy database repositories"
+      ]
+    ],
+    "unexpected_noise_error": [
+      [
+        "archive",
+        "database repositories"
+      ]
+    ]
+  },
+  {
+    "content": "John needs to schedule the database migration window for this weekend, and make sure to email the credentials to the engineering team.",
+    "metrics_error": {
+      "expected_count": 1,
+      "predicted_count": 0,
+      "count_mismatch": true
+    },
+    "expected_all_tasks": [
+      [
+        "email",
+        "credentials"
+      ]
+    ],
+    "predicted_all_tasks": [],
+    "missing_tasks_error": [
+      [
+        "email",
+        "credentials"
+      ]
+    ],
+    "unexpected_noise_error": []
+  }
+]

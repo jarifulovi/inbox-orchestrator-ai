@@ -243,8 +243,8 @@ class ThreadWebService:
         - Actionable tasks linked to thread
         """
         # Fetch thread record
-        t_res = self.db.table("email_threads").select("*").eq("id", thread_id).eq("connected_account_id", account_id).single().execute()
-        if not t_res.data:
+        t_res = self.db.table("email_threads").select("*").eq("id", thread_id).eq("connected_account_id", account_id).maybe_single().execute()
+        if not t_res or not t_res.data:
             raise KeyError(f"Thread {thread_id} not found.")
 
         thread = t_res.data

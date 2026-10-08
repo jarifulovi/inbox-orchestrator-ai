@@ -1,15 +1,17 @@
 import json
 import re
+import unittest
 import unicodedata
 from uuid import uuid4
-import unittest
+from pathlib import Path
 
 from app.core.ml_models.fact_extractor.fact_extractor import FactExtractor
 
 
 class TaskExtractorIntegrationTests(unittest.TestCase):
     def setUp(self):
-        with open("tests/files/task_extractor_test_data.json", "r", encoding="utf-8") as fh:
+        test_file_path = Path(__file__).parent / "files" / "task_extractor_test_data.json"
+        with open(test_file_path, "r", encoding="utf-8") as fh:
             self.raw = json.load(fh)
 
     def test_task_extractor_against_gold_file(self):
