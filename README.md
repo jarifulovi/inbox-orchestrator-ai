@@ -124,7 +124,9 @@ To deliver sub-second triaging and avoid runaway cloud LLM bills, generative AI 
   * When incoming messages introduce no new actionable facts (e.g., standard receipts or automated confirmations), the rules engine derives thread status deterministically and **bypasses Gemini API calls entirely**.
 * **Delta Summarization**:
   * Instead of re-sending full conversation histories on every message, the prompt engine compresses history into:
-    $$\text{Payload} = \text{Existing Summary} + \text{New Snippet} + \text{Active Tasks} + \text{New Facts}$$
+    ```text
+    Payload = Existing Summary + New Snippet + Active Tasks + New Facts
+    ```
   * This guarantees constant token consumption regardless of thread length.
 * **Content Pre-Compression (`ContentCompressorService`)**:
   * Strips boilerplate CSS/HTML, tracking pixels, forwarded headers, and signatures prior to tokenization.
@@ -151,7 +153,9 @@ Every thread is managed via a deterministic 5-stage state machine:
 
 ### 2. Action Fingerprint Deduplication
 To guarantee idempotency across repeated sync loops, actionable tasks generate a deterministic MD5 fingerprint:
-$$\text{action\_fingerprint} = \text{MD5}(\text{thread\_id} + \text{action\_verb} + \text{object\_primitive})$$
+```text
+action_fingerprint = MD5(thread_id + action_verb + object_primitive)
+```
 Inserted using `ON CONFLICT (user_id, action_fingerprint) DO NOTHING`.
 
 ### 3. Single Active Draft Enforcement
@@ -175,9 +179,9 @@ The storage layer is built on **Supabase (PostgreSQL with `pgvector`)**:
 
 ### 3-Tier Dynamic Semantic Search RPC
 Natural language vector search queries execute via the `match_emails` PostgreSQL RPC with tiered similarity fallback:
-* **Tier 1 (High Precision):** Similarity threshold $\ge 0.65$. If $\ge 3$ matches found, returns immediately.
-* **Tier 2 (Moderate Fallback):** Similarity threshold $\ge 0.45$.
-* **Tier 3 (Broad Fallback):** Similarity threshold $\ge 0.25$.
+* **Tier 1 (High Precision):** Similarity threshold `>= 0.65`. If `>= 3` matches found, returns immediately.
+* **Tier 2 (Moderate Fallback):** Similarity threshold `>= 0.45`.
+* **Tier 3 (Broad Fallback):** Similarity threshold `>= 0.25`.
 Results are deduplicated to return the highest-scoring message per thread alongside associated contact profiles.
 
 ---
